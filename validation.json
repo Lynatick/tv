@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-19",
+  "jdk": "25.0.4.1",
+  "gradle": "9.1.0",
+  "agp": "9.0.1",
+  "signed_release_installed": true,
+  "unit_tests": {
+    "tests": "9",
+    "failures": "0",
+    "errors": "0",
+    "skipped": "0"
+  },
+  "lint": "0 errors, 5 warnings",
+  "emulator": "Android TV API 34 / ARM64 / 1920x1080",
+  "remote_navigation": "DPAD right, OK, Back and down checked in signed release",
+  "favorite_selection": "Cast moderator removed; Link Cinema, Play Store, Settings and YouTube retained",
+  "city_search": "Moscow → Москва, Россия; real geocoding response",
+  "live_weather": "MET Norway fetched real conditions in signed APK",
+  "open_meteo_forecast": "network timeout; provider parser tested",
+  "google_yandex_weatherapi": "parsers tested with sample JSON; no real API keys supplied; live authenticated access unverified",
+  "home_role": "system prompt assigns role but factory TV launcher retains priority 2 in emulator",
+  "home_button_accessibility": "enabled through system UI, no shell settings writes; HOME from Settings verified ru.horizon.tv/.MainActivity",
+  "mi_tv_stick_4k": "physical device not connected; firmware compatibility unverified",
+  "site_preview": "browser visual QA at 654px width, real screenshot and expandable installation FAQ verified",
+  "signing": "dedicated local key, excluded from source and Git",
+  "api_key_setup_ui": "WeatherAPI.com key editor displayed before request; no real keys entered"
+}

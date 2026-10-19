@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Horizon TV</string>
+    <string name="home_service_name">Horizon TV: кнопка Домой</string>
+    <string name="home_service_description">Возвращает в Horizon TV при открытии штатного главного экрана. Включайте только если прошивка блокирует выбор лаунчера. Служба получает название активного окна лаунчера; текст экрана, пароли, нажатия и снимки экрана не запрашивает. Отключение возвращает обычное поведение ТВ.</string>
+</resources>

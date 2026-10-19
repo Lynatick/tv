@@ -1,0 +1,14 @@
+.gradle/
+.avd/
+**/build/
+local.properties
+signing/
+tools/google-java-format.jar
+*.log
+__pycache__/
+.DS_Store
+
+/*-home.png
+/ui-latest.xml
+/github-*.json
+/signature-verification.txt
