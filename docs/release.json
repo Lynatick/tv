@@ -1,7 +1,7 @@
 {
-  "version": "1.0.2",
-  "size_mb": 0.87,
-  "size_bytes": 915027,
-  "sha256": "5a27af73b8cc163eb9300317821f2b2e4766e08364e6d62914330f6e37978806",
-  "download": "https://github.com/Lynatick/tv/releases/download/v1.0.2/horizon-tv-1.0.2.apk"
+  "version": "1.0.3",
+  "size_mb": 0.88,
+  "size_bytes": 919123,
+  "sha256": "0ce9cc2925424af2aeb37f7363e81680fd1f14b1fbfa525b1b1723216bd873e3",
+  "download": "https://github.com/Lynatick/tv/releases/download/v1.0.3/horizon-tv-1.0.3.apk"
 }

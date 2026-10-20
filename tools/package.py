@@ -16,7 +16,7 @@ java_home = Path('/Users/dmitry_baranov/Library/Java/JavaVirtualMachines/ms-25.0
 android_home = Path('/Users/dmitry_baranov/Library/Android/sdk')
 outputs = workspace/'outputs/HorizonTV'
 outputs.mkdir(exist_ok=True)
-apk = outputs/'horizon-tv-1.0.2.apk'
+apk = outputs/'horizon-tv-1.0.3.apk'
 if '--source-only' not in sys.argv:
     signing = project / 'signing'
     signing.mkdir(exist_ok=True, mode=0o700)
@@ -35,7 +35,7 @@ if '--source-only' not in sys.argv:
     subprocess.run(['zsh', str(project/'build.sh'), ':app:testDebugUnitTest', ':app:lintRelease', ':app:assembleRelease', '--offline'], cwd=project, check=True)
     outputs = workspace/'outputs/HorizonTV'
     outputs.mkdir(exist_ok=True)
-    apk = outputs/'horizon-tv-1.0.2.apk'
+    apk = outputs/'horizon-tv-1.0.3.apk'
     unsigned = project/'app/build/outputs/apk/release/app-release-unsigned.apk'
     aligned = project/'app/build/outputs/apk/release/app-release-aligned.apk'
     tools = android_home/'build-tools/36.0.0'
@@ -46,15 +46,15 @@ if '--source-only' not in sys.argv:
 if not apk.exists():
     raise SystemExit('Build the signed APK before preparing its source archive')
 release_metadata = {
-    'version': '1.0.2',
+    'version': '1.0.3',
     'size_mb': round(apk.stat().st_size / 1048576, 2),
     'size_bytes': apk.stat().st_size,
     'sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
-    'download': 'https://github.com/Lynatick/tv/releases/download/v1.0.2/horizon-tv-1.0.2.apk',
+    'download': 'https://github.com/Lynatick/tv/releases/download/v1.0.3/horizon-tv-1.0.3.apk',
 }
 (project/'docs/release.json').write_text(json.dumps(release_metadata, indent=2) + '\n')
 shutil.copyfile(project/'README-RU.md', outputs/'Инструкция.md')
-archive = outputs/'horizon-tv-1.0.2-source.zip'
+archive = outputs/'horizon-tv-1.0.3-source.zip'
 with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_DEFLATED) as z:
     for path in project.rglob('*'):
         relative = path.relative_to(project)

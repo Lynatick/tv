@@ -1,28 +1,31 @@
 {
-  "version": "1.0.2",
+  "version": "1.0.3",
   "date": "2026-10-20",
   "jdk": "25.0.4.1",
   "gradle": "9.1.0",
   "agp": "9.0.1",
   "unit_tests": {
-    "tests": 15,
+    "tests": 20,
     "failures": 0,
     "errors": 0,
     "skipped": 0
   },
-  "lint": "0 errors, 5 existing warnings",
-  "update_tests": [
-    "numeric stable versions; no downgrade or same-version offer",
-    "reject draft and prerelease",
-    "reject foreign URLs, missing SHA-256, incomplete and oversized assets",
-    "reject modified, truncated and oversized APK contents",
-    "website metadata uses the same version, URL, size and checksum validation"
+  "lint": "0 errors, 7 warnings",
+  "weather_source": "Original Yandex Weather HTTPS page, no API key",
+  "weather_live_navigation": {
+    "today": "200 OK: Moscow coordinates select Tverskoy district today forecast",
+    "week": "200 OK: Saint Petersburg coordinates select Dvortsoviy district seven-day forecast"
+  },
+  "new_weather_tests": [
+    "day/week route and exact coordinates",
+    "locale-independent coordinate format",
+    "invalid locations and periods rejected",
+    "weather and captcha navigation allowed",
+    "foreign hosts, native schemes, user-info URLs, nonstandard ports and path escapes blocked"
   ],
   "signing_certificate_sha256": "de8cb4c0d91e4fb0d798413dfa93c35387471bc825c9880632246a6fdf001523",
-  "apk_sha256": "5a27af73b8cc163eb9300317821f2b2e4766e08364e6d62914330f6e37978806",
-  "source_archive_excludes": "keys, credentials, device records, local caches and build outputs",
-  "physical_tv_installation": "user reports manual installation; installed version and new UI behavior not independently verified via ADB",
-  "ui_validation": "new UI runtime verification not performed: ADB unavailable; temporary emulator creation not authorized",
-  "prior_version_validation": "validation-1.0.0.json",
-  "update_source": "https://lynatick.github.io/tv/release.json; avoids shared-IP GitHub API rate limits observed during live checks"
+  "apk_sha256": "0ce9cc2925424af2aeb37f7363e81680fd1f14b1fbfa525b1b1723216bd873e3",
+  "device_installation": "not performed, per user instruction",
+  "android_tv_ui": "not runtime verified; requires Android System WebView and device-specific testing",
+  "previous_validation": "validation-1.0.0.json"
 }

@@ -49,10 +49,10 @@ elif operation=='create':
     print(repo['html_url'])
 elif operation=='release':
     sha=subprocess.check_output(['git','-C',str(checkout),'rev-parse','HEAD'],text=True).strip()
-    release=optional(base+'/releases/tags/v1.0.2')
+    release=optional(base+'/releases/tags/v1.0.3')
     if release is None:
-        release=api('POST',base+'/releases',{'tag_name':'v1.0.2','target_commitish':sha,'name':'horizon tv 1.0.2','draft':True,'prerelease':False,'body':(checkout/'RELEASE-NOTES.md').read_text()})
-    files=['horizon-tv-1.0.2.apk','horizon-tv-1.0.2-source.zip','SHA256SUMS.txt']
+        release=api('POST',base+'/releases',{'tag_name':'v1.0.3','target_commitish':sha,'name':'horizon tv 1.0.3','draft':True,'prerelease':False,'body':(checkout/'RELEASE-NOTES.md').read_text()})
+    files=['horizon-tv-1.0.3.apk','horizon-tv-1.0.3-source.zip','SHA256SUMS.txt']
     for name in files:
         path=outputs/name;digest='sha256:'+hashlib.sha256(path.read_bytes()).hexdigest()
         old=next((x for x in release['assets'] if x['name']==name),None)
@@ -88,19 +88,19 @@ elif operation=='status':
     runs=api('GET',base+'/actions/runs?per_page=3')['workflow_runs']
     print(json.dumps({'pages':{k:pages.get(k) for k in ['html_url','status','source']},'build':None if builds is None else {k:builds.get(k) for k in ['status','error','commit']},'actions':[{k:r.get(k) for k in ['id','name','status','conclusion','html_url']} for r in runs]},ensure_ascii=False))
 elif operation=='verify':
-    release=api('GET',base+'/releases/tags/v1.0.2');assert not release['draft']
+    release=api('GET',base+'/releases/tags/v1.0.3');assert not release['draft']
     for asset in release['assets']:
         path=outputs/asset['name'];assert asset['digest']=='sha256:'+hashlib.sha256(path.read_bytes()).hexdigest()
     url='https://lynatick.github.io/tv/'
     with urllib.request.urlopen(url,timeout=30) as response:
         assert response.status==200;html=response.read().decode()
-    assert '<title>horizon tv' in html and 'releases/download/v1.0.2/horizon-tv-1.0.2.apk' in html
-    assert 'Open-Meteo' in html and 'MET Norway' in html
-    apk_asset=next(a for a in release['assets'] if a['name']=='horizon-tv-1.0.2.apk')
+    assert '<title>horizon tv' in html and 'releases/download/v1.0.3/horizon-tv-1.0.3.apk' in html
+    assert 'Яндекс Погода' in html and 'Неделя' in html
+    apk_asset=next(a for a in release['assets'] if a['name']=='horizon-tv-1.0.3.apk')
     with urllib.request.urlopen(url+'release.json',timeout=30) as response:
         metadata=json.load(response)
-    assert metadata['version']=='1.0.2' and metadata['size_bytes']==(outputs/'horizon-tv-1.0.2.apk').stat().st_size
-    assert metadata['sha256']==hashlib.sha256((outputs/'horizon-tv-1.0.2.apk').read_bytes()).hexdigest()
+    assert metadata['version']=='1.0.3' and metadata['size_bytes']==(outputs/'horizon-tv-1.0.3.apk').stat().st_size
+    assert metadata['sha256']==hashlib.sha256((outputs/'horizon-tv-1.0.3.apk').read_bytes()).hexdigest()
     assert metadata['download']==apk_asset['browser_download_url']
     anonymous=urllib.request.Request(apk_asset['browser_download_url'],headers={'User-Agent':'horizon-tv-download-check'})
     with urllib.request.urlopen(anonymous,timeout=60) as response:
@@ -111,8 +111,8 @@ elif operation=='verify':
             block=response.read(1024*1024)
             if not block:break
             count+=len(block);download_hash.update(block)
-    assert download_hash.hexdigest()==hashlib.sha256((outputs/'horizon-tv-1.0.2.apk').read_bytes()).hexdigest()
-    assert count==(outputs/'horizon-tv-1.0.2.apk').stat().st_size
-    (records/'github-public-verification.json').write_text(json.dumps({'repository':'https://github.com/Lynatick/tv','release':release['html_url'],'site':url,'sha256':hashlib.sha256((outputs/'horizon-tv-1.0.2.apk').read_bytes()).hexdigest(),'verified':True},indent=2))
+    assert download_hash.hexdigest()==hashlib.sha256((outputs/'horizon-tv-1.0.3.apk').read_bytes()).hexdigest()
+    assert count==(outputs/'horizon-tv-1.0.3.apk').stat().st_size
+    (records/'github-public-verification.json').write_text(json.dumps({'repository':'https://github.com/Lynatick/tv','release':release['html_url'],'site':url,'sha256':hashlib.sha256((outputs/'horizon-tv-1.0.3.apk').read_bytes()).hexdigest(),'verified':True},indent=2))
     print('Public site, release and asset hashes verified:',url)
 else:raise SystemExit('Unknown operation')

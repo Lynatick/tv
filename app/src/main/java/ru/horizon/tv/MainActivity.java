@@ -29,6 +29,7 @@ import android.text.TextUtils;
 import android.view.Gravity;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
@@ -58,18 +59,16 @@ public final class MainActivity extends Activity {
   private final Handler handler = new Handler(Looper.getMainLooper());
   private final ExecutorService worker = Executors.newFixedThreadPool(2);
   private Preferences prefs;
-  private Secrets secrets;
-  private TextView weatherCredit;
   private FrameLayout root;
-  private LinearLayout content, weatherCard;
-  private TextView clock, date, network, weatherTitle, weatherTemp, weatherDetails, weatherStatus;
+  private LinearLayout content;
+  private TextView clock, date, network;
+  private YandexWeatherView weatherView;
+  private WeatherClient.City weatherCity;
   private final List<AppEntry> apps = new ArrayList<>();
-  private Weather weather;
   private String screen = "home", weatherError = "";
   private boolean resumed, loading;
   private int weatherGeneration;
   private long lastAttempt;
-  private String loadingKey = "";
   private AlertDialog activeDialog;
   private View firstAppFocus, preferredAppFocus, emptyAppFocus;
   private String focusedAppId = "", installedVersion = "";
@@ -93,15 +92,16 @@ public final class MainActivity extends Activity {
           if (!resumed) return;
           updateClock();
           updateNetwork();
-          updateWeatherCard();
           checkForUpdates(false);
           updateDownloadStatus();
-          int interval = prefs.number("interval", 30);
-          if (prefs.flag("weather_enabled", true)
-              && !prefs.get("location_mode", "unset").equals("unset")
-              && interval > 0
-              && (weather == null
-                  || System.currentTimeMillis() - weather.fetched >= interval * 60000L)
+          boolean weatherVisible =
+              screen.equals("weather")
+                  || screen.equals("home") && prefs.flag("weather_enabled", true);
+          if (weatherView != null && weatherVisible) weatherView.tick(prefs.number("interval", 30));
+          if (weatherVisible
+              && prefs.get("location_mode", "unset").equals("auto")
+              && !loading
+              && System.currentTimeMillis() - prefs.data.getLong("auto_time", 0) >= 3600000L
               && System.currentTimeMillis() - lastAttempt >= 300000L) refreshWeather(false);
           handler.postDelayed(this, 1000);
         }
@@ -121,7 +121,6 @@ public final class MainActivity extends Activity {
       return;
     }
     prefs = new Preferences(this);
-    secrets = new Secrets(this);
     focusedAppId = prefs.get("last_app", "");
     try {
       installedVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
@@ -167,15 +166,17 @@ public final class MainActivity extends Activity {
       if (getPackageManager().canRequestPackageInstalls()) installDownloadedUpdate();
       else toast("Установка не разрешена. Разрешение можно включить при следующей попытке.");
     }
-    if (prefs.flag("weather_enabled", true)
+    if ((screen.equals("weather") || screen.equals("home") && prefs.flag("weather_enabled", true))
         && !prefs.get("location_mode", "unset").equals("unset")
-        && weather == null) refreshWeather(false);
+        && (weatherCity == null || prefs.get("location_mode", "unset").equals("auto")))
+      refreshWeather(false);
   }
 
   @Override
   protected void onPause() {
     super.onPause();
     resumed = false;
+    if (weatherView != null) weatherView.setActive(false);
     handler.removeCallbacks(tick);
   }
 
@@ -183,6 +184,7 @@ public final class MainActivity extends Activity {
   protected void onDestroy() {
     if (prefs != null) unregisterReceiver(packages);
     weatherGeneration++;
+    if (weatherView != null) weatherView.destroy();
     worker.shutdownNow();
     handler.removeCallbacksAndMessages(null);
     super.onDestroy();
@@ -205,6 +207,7 @@ public final class MainActivity extends Activity {
       super.onBackPressed();
       return;
     }
+    if (weatherView != null && weatherView.releaseWebFocus()) return;
     screen = "home";
     render();
   }
@@ -329,6 +332,11 @@ public final class MainActivity extends Activity {
   private void render() {
     if (prefs == null || isFinishing()) return;
     firstAppFocus = preferredAppFocus = emptyAppFocus = null;
+    if (weatherView != null) {
+      weatherView.setActive(false);
+      if (weatherView.getParent() instanceof ViewGroup)
+        ((ViewGroup) weatherView.getParent()).removeView(weatherView);
+    }
     root = new FrameLayout(this);
     root.addView(
         new SceneView(this, prefs.get("theme", "forest")), new FrameLayout.LayoutParams(-1, -1));
@@ -376,14 +384,19 @@ public final class MainActivity extends Activity {
     add(content, header, -1, 44);
     gap(content, 24);
     if (screen.equals("apps")) renderApps();
+    else if (screen.equals("weather")) renderWeatherPage();
     else renderHome();
     updateClock();
     updateNetwork();
     updateWeatherCard();
     View focus =
-        preferredAppFocus != null
-            ? preferredAppFocus
-            : firstAppFocus != null ? firstAppFocus : emptyAppFocus != null ? emptyAppFocus : home;
+        screen.equals("weather") && weatherView != null
+            ? weatherView.initialFocus()
+            : preferredAppFocus != null
+                ? preferredAppFocus
+                : firstAppFocus != null
+                    ? firstAppFocus
+                    : emptyAppFocus != null ? emptyAppFocus : home;
     FrameLayout renderedRoot = root;
     focus.requestFocus();
     focus.post(
@@ -403,28 +416,28 @@ public final class MainActivity extends Activity {
     add(timeBlock, clock, -1, -2);
     date = text("", 17, MUTED);
     add(timeBlock, date, -1, 30);
-    hero.addView(timeBlock, new LinearLayout.LayoutParams(0, dp(168), 1));
-    if (prefs.flag("weather_enabled", true)) {
-      weatherCard = column();
-      weatherCard.setPadding(dp(22), dp(16), dp(22), dp(14));
-      interactive(weatherCard, this::showWeather);
-      weatherTitle = text("ПОГОДА", 11, ACCENT);
-      weatherTitle.setLetterSpacing(.1f);
-      add(weatherCard, weatherTitle, -1, 20);
-      weatherTemp = text("—", 37, WHITE);
-      weatherTemp.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
-      add(weatherCard, weatherTemp, -1, 48);
-      weatherDetails = text("", 12, WHITE);
-      add(weatherCard, weatherDetails, -1, 35);
-      weatherStatus = text("", 10, MUTED);
-      add(weatherCard, weatherStatus, -1, -2);
-      weatherCredit = text("", 8, MUTED);
-      add(weatherCard, weatherCredit, -1, -2);
-      add(hero, weatherCard, 300, 168);
-    } else {
-      weatherCard = null;
+    boolean showWeather = prefs.flag("weather_enabled", true);
+    int height =
+        showWeather
+            ? Math.max(
+                220,
+                Math.min(
+                    260,
+                    (int)
+                            (getResources().getDisplayMetrics().heightPixels
+                                / getResources().getDisplayMetrics().density)
+                        - 280))
+            : 168;
+    timeBlock.setGravity(Gravity.CENTER_VERTICAL);
+    hero.addView(timeBlock, new LinearLayout.LayoutParams(0, dp(height), showWeather ? .32f : 1));
+    if (showWeather) {
+      ensureWeatherView();
+      weatherView.setFullscreen(false);
+      hero.addView(weatherView, new LinearLayout.LayoutParams(0, dp(height), .68f));
+      weatherView.setCity(weatherCity);
+      weatherView.setActive(resumed);
     }
-    add(content, hero, -1, 168);
+    add(content, hero, -1, height);
     gap(content, 18);
     LinearLayout label = row();
     add(label, text("Избранные приложения", 19, WHITE), -2, -2);
@@ -472,7 +485,6 @@ public final class MainActivity extends Activity {
   private void renderApps() {
     clock = null;
     date = null;
-    weatherCard = null;
     TextView title = text("Все приложения", 32, WHITE);
     add(content, title, -1, 46);
     add(
@@ -657,7 +669,7 @@ public final class MainActivity extends Activity {
     item(
         layout,
         "Погода",
-        "Город, источник данных, частота обновления",
+        "Яндекс Погода: город, день, неделя и частота обновления",
         () -> {
           ref[0].dismiss();
           showWeather();
@@ -1154,20 +1166,20 @@ public final class MainActivity extends Activity {
         text(
             "Пульт: стрелки — навигация, OK — выбор, удерживать OK — действия с приложением, MENU —"
                 + " настройки, Назад — главный экран.\n\n"
-                + "Погода: Google Weather (Google Maps), Яндекс Погода, WeatherAPI.com, Open-Meteo"
-                + " (CC BY 4.0) или MET Norway / Yr (CC BY 4.0). MET Norway показывает ближайший"
-                + " почасовой прогноз. Поиск городов: Open-Meteo / GeoNames.\n\n"
-                + "Автоматический город: ipwho.is по внешнему IP. VPN может изменить город. Поиск"
-                + " города и погоды передаёт выбранное название или координаты соответствующим"
-                + " сервисам. Google Weather, Яндекс и WeatherAPI.com требуют собственный ключ API."
-                + " MET Norway и Open-Meteo доступны без ключа. Ключи шифруются Android"
-                + " Keystore.\n\n"
-                + "Настройки и избранное хранятся на телевизоре. Аналитики и рекламы нет."
-                + " Обновления погоды выполняются, пока главный экран открыт; ответы сервера"
-                + " кэшируются для источников без ключей. Данные Google на диск не сохраняются. При"
-                + " ошибке доступны последние разрешённые к сохранению данные с отметкой"
-                + " времени.\n\n"
-                + "Исходники и обновления: github.com/Lynatick/tv",
+                + "Погода: встроенная страница Яндекс Погоды. Кнопки «День», «Неделя» и «Город»"
+                + " управляются с пульта. API-ключ не нужен. Яндекс сохраняет оформление, ссылки и"
+                + " атрибуцию своей страницы; она может содержать рекламу, cookies и проверку"
+                + " подключения.\n\n"
+                + "Поиск городов: Open-Meteo / GeoNames. Автоматический город: ipwho.is по внешнему"
+                + " IP. VPN может изменить результат. Название города передаётся сервису поиска,"
+                + " координаты выбранного города — Яндексу. Настройки и избранное хранятся на"
+                + " ТВ.\n\n"
+                + "Загрузка веб-прогноза приостанавливается, когда блок не виден. Частота"
+                + " обновления управляет повторной загрузкой страницы; сам Яндекс также управляет"
+                + " актуальностью своих данных. В Horizon TV нет собственной рекламы и"
+                + " аналитики.\n\n"
+                + "Скачать и обновить: lynatick.github.io/tv/\n"
+                + "Исходники: github.com/Lynatick/tv",
             14,
             WHITE);
     details.setLineSpacing(dp(4), 1);
@@ -1460,180 +1472,121 @@ public final class MainActivity extends Activity {
     Toast.makeText(this, message, Toast.LENGTH_LONG).show();
   }
 
+  private void ensureWeatherView() {
+    if (weatherView == null)
+      weatherView =
+          new YandexWeatherView(
+              this,
+              prefs,
+              this::showLocation,
+              () -> {
+                screen = screen.equals("weather") ? "home" : "weather";
+                render();
+              });
+  }
+
+  private void renderWeatherPage() {
+    clock = date = null;
+    ensureWeatherView();
+    weatherView.setFullscreen(true);
+    int height =
+        Math.max(
+            240,
+            (int)
+                    (getResources().getDisplayMetrics().heightPixels
+                        / getResources().getDisplayMetrics().density)
+                - 130);
+    add(content, weatherView, -1, height);
+    weatherView.setCity(weatherCity);
+    weatherView.setActive(resumed);
+  }
+
   private void loadWeather() {
-    weather =
-        !prefs.get("provider", "met").equals("google")
-                && prefs.get("cache_key", "").equals(prefs.weatherKey())
-            ? Weather.cached(prefs.get("weather_cache", ""))
-            : null;
+    weatherCity = null;
+    try {
+      if (prefs.get("location_mode", "unset").equals("manual")) {
+        weatherCity =
+            new WeatherClient.City(
+                prefs.get("city", ""),
+                "",
+                Double.parseDouble(prefs.get("latitude", "")),
+                Double.parseDouble(prefs.get("longitude", "")));
+      } else if (prefs.get("location_mode", "unset").equals("auto")) {
+        JSONObject city = new JSONObject(prefs.get("auto_city", "{}"));
+        weatherCity =
+            new WeatherClient.City(
+                city.getString("name"), "", city.getDouble("lat"), city.getDouble("lon"));
+      }
+    } catch (Exception ignored) {
+      weatherCity = null;
+    }
   }
 
   private void updateWeatherCard() {
-    if (weatherCard == null || weatherTitle == null) return;
-    if (weather == null) {
-      weatherCredit.setVisibility(View.GONE);
-      weatherTitle.setText("ПОГОДА");
-      weatherTemp.setText(
-          loading
-              ? "Обновление…"
-              : weatherError.contains("ключ") ? "Подключить источник" : "Выбрать город");
-      weatherTemp.setTextSize(24);
-      weatherDetails.setText(
-          loading
-              ? "Получаем данные сервиса"
-              : weatherError.isEmpty()
-                  ? "Автоматически или вручную"
-                  : "Нет данных · проверьте сеть");
-      weatherStatus.setText("Нажмите OK для настройки");
-      return;
-    }
-    weatherTitle.setText(weather.city.toUpperCase(new Locale("ru")));
-    weatherTemp.setText(
-        weather.temperature(prefs.flag("fahrenheit", false))
-            + "   "
-            + weatherGlyph(weather.symbol));
-    weatherTemp.setTextSize(37);
-    weatherDetails.setText(
-        weather.description
-            + "\nВетер "
-            + Math.round(weather.wind)
-            + " м/с  ·  Влажность "
-            + weather.humidity
-            + "%");
-    long age = System.currentTimeMillis() - weather.fetched;
-    boolean stale =
-        age > Math.max(prefs.number("interval", 30), 60) * 60000L
-            || System.currentTimeMillis() - weather.observation > 7200000;
-    String status =
-        loading
-            ? "Обновление…"
-            : !weatherError.isEmpty()
-                ? "Нет связи · сохранённые данные"
-                : stale
-                    ? "Сохранённые данные"
-                    : "Обновлено "
-                        + new SimpleDateFormat("HH:mm", Locale.getDefault())
-                            .format(new Date(weather.fetched));
-    weatherStatus.setText(weather.provider + "  ·  " + status);
-    boolean google = weather.provider.equals("Google Maps");
-    weatherStatus.setTextSize(google ? 12 : 10);
-    weatherStatus.setTextColor(google ? 0xFFFFFFFF : MUTED);
-    weatherCredit.setVisibility(google ? View.VISIBLE : View.GONE);
-    weatherCredit.setText(google ? "Source: Includes weather data from Google" : "");
-  }
-
-  private String weatherGlyph(String symbol) {
-    switch (symbol) {
-      case "sun":
-        return "☀";
-      case "moon":
-        return "☾";
-      case "rain":
-        return "☂";
-      case "snow":
-        return "❄";
-      case "storm":
-        return "ϟ";
-      default:
-        return "☁";
-    }
+    if (weatherView != null) weatherView.setCity(weatherCity);
   }
 
   private void invalidateWeather() {
     weatherGeneration++;
     loading = false;
-    weather = null;
     weatherError = "";
     lastAttempt = 0;
-    prefs.set("weather_cache", "");
-    prefs.set("cache_key", "");
+    loadWeather();
     updateWeatherCard();
   }
 
   private void refreshWeather(boolean manual) {
-    if (prefs.get("location_mode", "unset").equals("unset")) {
+    String mode = prefs.get("location_mode", "unset");
+    if (mode.equals("unset")) {
       if (manual) showLocation();
       return;
     }
-    if (loading && loadingKey.equals(prefs.weatherKey())) {
-      if (manual) toast("Погода уже обновляется");
-      return;
-    }
-    if (manual && System.currentTimeMillis() - lastAttempt < 30000) {
-      toast("Следующее обновление будет доступно через 30 секунд");
-      return;
-    }
-    final int generation = ++weatherGeneration;
-    final String key = prefs.weatherKey();
-    final String provider = prefs.get("provider", "met");
-    final String apiKey = secrets.get(provider);
-    if (WeatherClient.requiresKey(provider) && apiKey.isEmpty()) {
-      weatherError = "Введите ключ API в настройках погоды";
+    if (mode.equals("manual")) {
+      loadWeather();
       updateWeatherCard();
-      if (manual) showKeyEditor(provider);
+      if (manual && weatherView != null) weatherView.refresh(true);
       return;
     }
-    final boolean automatic = prefs.get("location_mode", "unset").equals("auto");
-    final String lat = prefs.get("latitude", ""),
-        lon = prefs.get("longitude", ""),
-        name = prefs.get("city", "");
-    final String autoJson = prefs.get("auto_city", "");
-    final long autoTime = prefs.data.getLong("auto_time", 0);
+    if (loading) {
+      if (manual) toast("Определяем город…");
+      return;
+    }
+    if (!manual
+        && weatherCity != null
+        && System.currentTimeMillis() - prefs.data.getLong("auto_time", 0) < 3600000L) return;
+    if (manual && System.currentTimeMillis() - lastAttempt < 30000L) {
+      toast("Повторное определение доступно через 30 секунд");
+      return;
+    }
+    int generation = ++weatherGeneration;
     loading = true;
-    loadingKey = key;
     lastAttempt = System.currentTimeMillis();
-    updateWeatherCard();
     worker.execute(
         () -> {
           try {
-            WeatherClient.City city;
-            if (automatic) {
-              if (!autoJson.isEmpty() && System.currentTimeMillis() - autoTime < 3600000) {
-                org.json.JSONObject c = new org.json.JSONObject(autoJson);
-                city =
-                    new WeatherClient.City(
-                        c.getString("name"), "", c.getDouble("lat"), c.getDouble("lon"));
-              } else city = WeatherClient.automatic();
-            } else
-              city =
-                  new WeatherClient.City(
-                      name, "", Double.parseDouble(lat), Double.parseDouble(lon));
-            final WeatherClient.City resolved = city;
-            Weather result = WeatherClient.fetch(provider, city, apiKey);
+            WeatherClient.City resolved = WeatherClient.automatic();
+            JSONObject saved =
+                new JSONObject()
+                    .put("name", resolved.name)
+                    .put("lat", resolved.latitude)
+                    .put("lon", resolved.longitude);
             handler.post(
                 () -> {
-                  if (generation != weatherGeneration || isDestroyed()) return;
-                  weather = result;
-                  weatherError = "";
+                  if (isDestroyed() || generation != weatherGeneration) return;
                   loading = false;
-                  prefs.set("cache_key", key);
-                  prefs.set("weather_cache", provider.equals("google") ? "" : result.json());
-                  if (automatic)
-                    try {
-                      prefs.set(
-                          "auto_city",
-                          new org.json.JSONObject()
-                              .put("name", resolved.name)
-                              .put("lat", resolved.latitude)
-                              .put("lon", resolved.longitude)
-                              .toString());
-                      prefs.data.edit().putLong("auto_time", System.currentTimeMillis()).apply();
-                    } catch (Exception ignored) {
-                    }
+                  weatherError = "";
+                  weatherCity = resolved;
+                  prefs.set("auto_city", saved.toString());
+                  prefs.data.edit().putLong("auto_time", System.currentTimeMillis()).apply();
                   updateWeatherCard();
                 });
           } catch (Exception e) {
             handler.post(
                 () -> {
-                  if (generation != weatherGeneration || isDestroyed()) return;
+                  if (isDestroyed() || generation != weatherGeneration) return;
                   loading = false;
                   weatherError =
-                      WeatherClient.requiresKey(provider)
-                          ? "Не удалось обновить погоду. Проверьте интернет, ключ API и тариф"
-                              + " источника."
-                          : "Не удалось обновить погоду. Проверьте интернет или выберите другой"
-                              + " источник.";
-                  updateWeatherCard();
+                      "Не удалось определить город. Выберите его вручную или проверьте сеть.";
                   if (manual) toast(weatherError);
                 });
           }
@@ -1641,8 +1594,7 @@ public final class MainActivity extends Activity {
   }
 
   private void showWeather() {
-    LinearLayout layout =
-        panel("Погода", "Google Weather · Яндекс · WeatherAPI.com · MET Norway · Open-Meteo");
+    LinearLayout layout = panel("Яндекс Погода", "Встроенная страница прогноза без API-ключа");
     final AlertDialog[] ref = new AlertDialog[1];
     String mode = prefs.get("location_mode", "unset");
     String city =
@@ -1651,32 +1603,28 @@ public final class MainActivity extends Activity {
             : mode.equals("auto") ? "Автоматически по IP" : prefs.get("city", "");
     item(
         layout,
-        "Местоположение",
-        city,
+        "Город",
+        weatherCity == null ? city : weatherCity.name,
         () -> {
           ref[0].dismiss();
           showLocation();
         });
-    String selectedProvider = prefs.get("provider", "met");
     item(
         layout,
-        "Источник данных",
-        WeatherClient.label(selectedProvider),
+        "Прогноз на день",
+        "Сегодня: утро, день, вечер и ночь",
         () -> {
           ref[0].dismiss();
-          showProviders();
+          openWeatherPeriod("day");
         });
-    if (WeatherClient.requiresKey(selectedProvider))
-      item(
-          layout,
-          "Ключ API источника",
-          secrets.get(selectedProvider).isEmpty()
-              ? "Не введён · нажмите для настройки"
-              : "Сохранён на телевизоре в зашифрованном виде",
-          () -> {
-            ref[0].dismiss();
-            showKeyEditor(selectedProvider);
-          });
+    item(
+        layout,
+        "Прогноз на неделю",
+        "Ближайшие 7 дней на странице Яндекс Погоды",
+        () -> {
+          ref[0].dismiss();
+          openWeatherPeriod("week");
+        });
     int interval = prefs.number("interval", 30);
     item(
         layout,
@@ -1685,7 +1633,7 @@ public final class MainActivity extends Activity {
         () -> {
           ref[0].dismiss();
           chooseNumber(
-              "Обновлять погоду",
+              "Обновлять страницу прогноза",
               new String[] {
                 "Каждые 15 минут",
                 "Каждые 30 минут",
@@ -1701,172 +1649,40 @@ public final class MainActivity extends Activity {
         });
     item(
         layout,
-        "Единицы температуры",
-        prefs.flag("fahrenheit", false) ? "°F — Фаренгейт" : "°C — Цельсий",
-        () -> {
-          prefs.putFlag("fahrenheit", !prefs.flag("fahrenheit", false));
-          ref[0].dismiss();
-          render();
-          showWeather();
-        });
-    item(
-        layout,
-        "Виджет погоды: " + yes(prefs.flag("weather_enabled", true)),
-        "Показывать погоду на главном экране",
+        "Погода на главной: " + yes(prefs.flag("weather_enabled", true)),
+        "Показывать встроенный прогноз",
         () -> {
           prefs.putFlag("weather_enabled", !prefs.flag("weather_enabled", true));
           ref[0].dismiss();
           render();
           showWeather();
         });
-    String state =
-        weather == null
-            ? "Нет сохранённых данных"
-            : weather.city
-                + " · Данные на "
-                + new SimpleDateFormat("dd.MM HH:mm", Locale.getDefault())
-                    .format(new Date(weather.observation));
     item(
         layout,
         "Обновить сейчас",
-        loading ? "Обновление…" : state,
+        "Перезагрузить страницу Яндекс Погоды",
         () -> {
           ref[0].dismiss();
-          refreshWeather(true);
+          if (prefs.get("location_mode", "unset").equals("unset")) showLocation();
+          else {
+            refreshWeather(true);
+            if (!prefs.get("location_mode", "unset").equals("manual") && weatherView != null)
+              weatherView.refresh(true);
+          }
         });
     if (!weatherError.isEmpty()) add(layout, text(weatherError, 13, 0xFFEAB998), -1, -2);
     item(layout, "Готово", "Сохранено", () -> ref[0].dismiss());
     ref[0] = dialog(layout);
   }
 
-  private void showProviders() {
-    LinearLayout layout =
-        panel(
-            "Источник погоды",
-            "Google, Яндекс и WeatherAPI.com требуют собственный ключ API. MET Norway и Open-Meteo"
-                + " доступны без ключей.");
-    final AlertDialog[] ref = new AlertDialog[1];
-    for (String provider : new String[] {"google", "yandex", "weatherapi", "met", "openmeteo"}) {
-      String detail =
-          WeatherClient.requiresKey(provider)
-              ? "Нужен ключ API · условия и лимиты провайдера"
-              : "Без ключа API";
-      item(
-          layout,
-          WeatherClient.label(provider),
-          detail,
-          () -> {
-            prefs.set("provider", provider);
-            invalidateWeather();
-            ref[0].dismiss();
-            render();
-            if (WeatherClient.requiresKey(provider) && secrets.get(provider).isEmpty())
-              showKeyEditor(provider);
-            else {
-              refreshWeather(false);
-              showWeather();
-            }
-          });
+  private void openWeatherPeriod(String period) {
+    prefs.set("yandex_period", period);
+    if (weatherView != null) {
+      weatherView.destroy();
+      weatherView = null;
     }
-    item(
-        layout,
-        "Назад",
-        "Настройки погоды",
-        () -> {
-          ref[0].dismiss();
-          showWeather();
-        });
-    ref[0] = dialog(layout);
-  }
-
-  private void showKeyEditor(String provider) {
-    String description =
-        provider.equals("google")
-            ? "Ключ Google Maps Platform с включённым Weather API. Для рабочего ключа Google"
-                + " требуется платёжный аккаунт; стоимость и лимиты зависят от тарифа."
-            : provider.equals("yandex")
-                ? "Ключ API Яндекс Погоды с доступом к GraphQL v3. Получите его в кабинете"
-                    + " разработчика Яндекса; доступ зависит от тарифа."
-                : "Получите собственный ключ на weatherapi.com. Доступны бесплатные и платные"
-                    + " тарифы с разными лимитами.";
-    LinearLayout layout =
-        panel(
-            WeatherClient.label(provider),
-            description
-                + "\n\n"
-                + "Ключ шифруется Android Keystore и остаётся на этом телевизоре. Он передаётся"
-                + " только выбранному погодному сервису.");
-    EditText input = new EditText(this);
-    input.setSingleLine(true);
-    input.setTextColor(WHITE);
-    input.setHintTextColor(MUTED);
-    input.setHint(secrets.get(provider).isEmpty() ? "Ключ API" : "Новый ключ (старый сохранён)");
-    input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
-    add(layout, input, -1, 56);
-    gap(layout, 12);
-    final AlertDialog[] ref = new AlertDialog[1];
-    item(
-        layout,
-        "Сохранить ключ",
-        "Использовать для выбранного источника",
-        () -> {
-          String value = input.getText().toString().trim();
-          if (value.isEmpty()) {
-            toast("Введите ключ API");
-            return;
-          }
-          try {
-            secrets.set(provider, value);
-            invalidateWeather();
-            ref[0].dismiss();
-            render();
-            refreshWeather(true);
-          } catch (Exception e) {
-            toast("Не удалось безопасно сохранить ключ. Попробуйте ещё раз.");
-          }
-        });
-    String url =
-        provider.equals("google")
-            ? "https://developers.google.com/maps/documentation/weather/get-api-key"
-            : provider.equals("yandex")
-                ? "https://yandex.ru/dev/weather/"
-                : "https://www.weatherapi.com/signup.aspx";
-    item(
-        layout,
-        "Где получить ключ",
-        url,
-        () -> {
-          try {
-            startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
-          } catch (Exception e) {
-            toast("Откройте указанный адрес на компьютере или телефоне.");
-          }
-        });
-    if (!secrets.get(provider).isEmpty())
-      item(
-          layout,
-          "Удалить ключ",
-          "Удалить с этого телевизора",
-          () -> {
-            try {
-              secrets.set(provider, "");
-              invalidateWeather();
-              ref[0].dismiss();
-              render();
-              showWeather();
-            } catch (Exception e) {
-              toast("Не удалось удалить ключ");
-            }
-          });
-    item(
-        layout,
-        "Назад",
-        "Настройки погоды",
-        () -> {
-          ref[0].dismiss();
-          showWeather();
-        });
-    ref[0] = dialog(layout);
+    screen = "weather";
+    render();
   }
 
   private void showLocation() {
@@ -1975,7 +1791,6 @@ public final class MainActivity extends Activity {
             invalidateWeather();
             ref[0].dismiss();
             render();
-            refreshWeather(true);
           });
     item(
         layout,
