@@ -2,6 +2,7 @@ package ru.horizon.tv;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.DownloadManager;
 import android.app.UiModeManager;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -10,13 +11,16 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.ResolveInfo;
 import android.content.res.Configuration;
+import android.database.Cursor;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.net.ConnectivityManager;
 import android.net.NetworkCapabilities;
+import android.net.Uri;
 import android.net.http.HttpResponseCache;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
@@ -36,6 +40,7 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 import java.io.File;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -46,6 +51,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.json.JSONObject;
 
 public final class MainActivity extends Activity {
   private static final int WHITE = 0xFFF0F5F1, MUTED = 0xFF9DB2B4, ACCENT = 0xFFB5E4CD;
@@ -65,6 +71,13 @@ public final class MainActivity extends Activity {
   private long lastAttempt;
   private String loadingKey = "";
   private AlertDialog activeDialog;
+  private View firstAppFocus, preferredAppFocus, emptyAppFocus;
+  private String focusedAppId = "", installedVersion = "";
+  private TextView updateButton;
+  private UpdateClient.Release availableUpdate;
+  private JSONObject latestUpdateJson;
+  private boolean checkingUpdates, verifyingUpdate, waitingForInstallPermission;
+  private long lastUpdateAttempt;
   private final BroadcastReceiver packages =
       new BroadcastReceiver() {
         @Override
@@ -81,6 +94,8 @@ public final class MainActivity extends Activity {
           updateClock();
           updateNetwork();
           updateWeatherCard();
+          checkForUpdates(false);
+          updateDownloadStatus();
           int interval = prefs.number("interval", 30);
           if (prefs.flag("weather_enabled", true)
               && !prefs.get("location_mode", "unset").equals("unset")
@@ -107,6 +122,15 @@ public final class MainActivity extends Activity {
     }
     prefs = new Preferences(this);
     secrets = new Secrets(this);
+    focusedAppId = prefs.get("last_app", "");
+    try {
+      installedVersion = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+      latestUpdateJson = new JSONObject(prefs.get("update_release", "{}"));
+      availableUpdate = UpdateClient.parse(latestUpdateJson, installedVersion);
+    } catch (Exception ignored) {
+      latestUpdateJson = null;
+    }
+    if (pendingUpdate() == null) clearUpdateDownload();
     try {
       HttpResponseCache.install(new File(getCacheDir(), "http"), 8 * 1024 * 1024);
     } catch (Exception ignored) {
@@ -138,6 +162,11 @@ public final class MainActivity extends Activity {
     render();
     handler.removeCallbacks(tick);
     handler.post(tick);
+    if (waitingForInstallPermission) {
+      waitingForInstallPermission = false;
+      if (getPackageManager().canRequestPackageInstalls()) installDownloadedUpdate();
+      else toast("Установка не разрешена. Разрешение можно включить при следующей попытке.");
+    }
     if (prefs.flag("weather_enabled", true)
         && !prefs.get("location_mode", "unset").equals("unset")
         && weather == null) refreshWeather(false);
@@ -299,6 +328,7 @@ public final class MainActivity extends Activity {
 
   private void render() {
     if (prefs == null || isFinishing()) return;
+    firstAppFocus = preferredAppFocus = emptyAppFocus = null;
     root = new FrameLayout(this);
     root.addView(
         new SceneView(this, prefs.get("theme", "forest")), new FrameLayout.LayoutParams(-1, -1));
@@ -335,6 +365,12 @@ public final class MainActivity extends Activity {
     header.addView(space, new LinearLayout.LayoutParams(0, 1, 1));
     network = text("", 12, MUTED);
     add(header, network, -2, -2);
+    gap(header, 12);
+    updateButton = button("↓", this::showUpdate);
+    updateButton.setTextSize(22);
+    updateButton.setPadding(0, 0, 0, 0);
+    add(header, updateButton, 44, 40);
+    updateUpdateButton();
     gap(header, 18);
     add(header, button("⚙  Настройки", this::showSettings), 138, 40);
     add(content, header, -1, 44);
@@ -344,7 +380,18 @@ public final class MainActivity extends Activity {
     updateClock();
     updateNetwork();
     updateWeatherCard();
-    home.requestFocus();
+    View focus =
+        preferredAppFocus != null
+            ? preferredAppFocus
+            : firstAppFocus != null ? firstAppFocus : emptyAppFocus != null ? emptyAppFocus : home;
+    FrameLayout renderedRoot = root;
+    focus.requestFocus();
+    focus.post(
+        () -> {
+          if (root == renderedRoot
+              && resumed
+              && (activeDialog == null || !activeDialog.isShowing())) focus.requestFocus();
+        });
   }
 
   private void renderHome() {
@@ -452,6 +499,7 @@ public final class MainActivity extends Activity {
       add(tile, text("＋", 27, ACCENT), -2, 36);
       add(tile, text("Выбрать", 12, WHITE), -2, 24);
       interactive(tile, this::showAppPicker);
+      emptyAppFocus = tile;
       tile.setContentDescription("Выбрать приложения для главного экрана");
       grid.addView(tile, tileParams(columns));
     }
@@ -484,6 +532,13 @@ public final class MainActivity extends Activity {
     }
     tile.setContentDescription(app.name);
     interactive(tile, () -> launch(app));
+    tile.setOnFocusChangeListener(
+        (v, focused) -> {
+          v.setElevation(focused ? dp(8) : 0);
+          if (focused) focusedAppId = app.id;
+        });
+    if (firstAppFocus == null) firstAppFocus = tile;
+    if (app.id.equals(focusedAppId)) preferredAppFocus = tile;
     tile.setOnLongClickListener(
         v -> {
           showAppActions(app);
@@ -494,6 +549,7 @@ public final class MainActivity extends Activity {
 
   private void launch(AppEntry app) {
     try {
+      prefs.set("last_app", app.id);
       startActivity(
           new Intent(Intent.ACTION_MAIN)
               .addCategory(Intent.CATEGORY_LAUNCHER)
@@ -579,7 +635,8 @@ public final class MainActivity extends Activity {
   }
 
   private void showSettings() {
-    LinearLayout layout = panel("Настройки", "Horizon TV 1.0.0 · Android TV / Google TV");
+    LinearLayout layout =
+        panel("Настройки", "Horizon TV " + installedVersion + " · Android TV / Google TV");
     final AlertDialog[] ref = new AlertDialog[1];
     item(
         layout,
@@ -620,6 +677,17 @@ public final class MainActivity extends Activity {
         () -> {
           ref[0].dismiss();
           showHomeSetup();
+        });
+    item(
+        layout,
+        "Обновление Horizon TV",
+        updateRelease() == null
+            ? "Проверить наличие новой версии"
+            : "Доступна версия " + updateRelease().version,
+        () -> {
+          ref[0].dismiss();
+          if (updateRelease() == null) checkForUpdates(true);
+          else showUpdate();
         });
     item(
         layout,
@@ -1079,7 +1147,9 @@ public final class MainActivity extends Activity {
 
   private void showAbout() {
     LinearLayout layout =
-        panel("Horizon TV", "Версия 1.0.0 · Android 8.0 и новее · Только телевизоры");
+        panel(
+            "Horizon TV",
+            "Версия " + installedVersion + " · Android 8.0 и новее · Только телевизоры");
     TextView details =
         text(
             "Пульт: стрелки — навигация, OK — выбор, удерживать OK — действия с приложением, MENU —"
@@ -1103,6 +1173,287 @@ public final class MainActivity extends Activity {
     details.setLineSpacing(dp(4), 1);
     add(layout, details, -1, -2);
     dialog(layout);
+  }
+
+  private UpdateClient.Release pendingUpdate() {
+    if (prefs.data.getLong("update_download_id", -1) == -1) return null;
+    try {
+      return UpdateClient.parse(
+          new JSONObject(prefs.get("update_download_release", "{}")), installedVersion);
+    } catch (Exception ignored) {
+      return null;
+    }
+  }
+
+  private UpdateClient.Release updateRelease() {
+    UpdateClient.Release pending = pendingUpdate();
+    return pending != null ? pending : availableUpdate;
+  }
+
+  private void updateUpdateButton() {
+    if (updateButton == null) return;
+    UpdateClient.Release release = updateRelease();
+    boolean wasFocused = updateButton.hasFocus();
+    updateButton.setVisibility(release == null ? View.GONE : View.VISIBLE);
+    if (release != null) {
+      updateButton.setText(verifyingUpdate ? "…" : "↓");
+      updateButton.setContentDescription("Обновить Horizon TV до версии " + release.version);
+    } else if (wasFocused && firstAppFocus != null) {
+      firstAppFocus.requestFocus();
+    }
+  }
+
+  private void checkForUpdates(boolean manual) {
+    long now = System.currentTimeMillis();
+    if (checkingUpdates) {
+      if (manual) toast("Проверка обновлений уже выполняется…");
+      return;
+    }
+    if (!manual
+        && (now - lastUpdateAttempt < 15 * 60000L
+            || now - prefs.data.getLong("update_checked", 0) < 6 * 60 * 60000L)) return;
+    if (manual && now - lastUpdateAttempt < 30000L) {
+      toast("Повторная проверка будет доступна через 30 секунд.");
+      return;
+    }
+    checkingUpdates = true;
+    lastUpdateAttempt = now;
+    if (manual) toast("Проверка обновлений…");
+    worker.execute(
+        () -> {
+          try {
+            JSONObject json = UpdateClient.fetch();
+            UpdateClient.Release release = UpdateClient.parse(json, installedVersion);
+            handler.post(
+                () -> {
+                  if (isDestroyed()) return;
+                  checkingUpdates = false;
+                  latestUpdateJson = json;
+                  availableUpdate = release;
+                  prefs
+                      .data
+                      .edit()
+                      .putString("update_release", json.toString())
+                      .putLong("update_checked", System.currentTimeMillis())
+                      .apply();
+                  updateUpdateButton();
+                  if (manual && resumed) {
+                    if (updateRelease() != null) showUpdate();
+                    else toast("Установлена последняя версия Horizon TV.");
+                  }
+                });
+          } catch (Exception e) {
+            handler.post(
+                () -> {
+                  if (isDestroyed()) return;
+                  checkingUpdates = false;
+                  if (manual && resumed)
+                    toast("Не удалось проверить обновления. Проверьте доступ к GitHub.");
+                });
+          }
+        });
+  }
+
+  private DownloadManager downloads() {
+    return (DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+  }
+
+  private int downloadStatus() {
+    long id = prefs.data.getLong("update_download_id", -1);
+    if (id == -1) return 0;
+    DownloadManager manager = downloads();
+    if (manager == null) return DownloadManager.STATUS_FAILED;
+    try (Cursor cursor = manager.query(new DownloadManager.Query().setFilterById(id))) {
+      if (cursor == null || !cursor.moveToFirst()) return DownloadManager.STATUS_FAILED;
+      return cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS));
+    } catch (Exception e) {
+      return DownloadManager.STATUS_FAILED;
+    }
+  }
+
+  private void updateDownloadStatus() {
+    if (prefs.data.getLong("update_download_id", -1) == -1) return;
+    int status = downloadStatus();
+    if (status == DownloadManager.STATUS_FAILED) {
+      clearUpdateDownload();
+      updateUpdateButton();
+      toast("Не удалось скачать обновление. Нажмите ↓, чтобы повторить.");
+    } else if (status == DownloadManager.STATUS_SUCCESSFUL
+        && !prefs.flag("update_download_notified", false)) {
+      prefs.putFlag("update_download_notified", true);
+      toast("Обновление загружено. Нажмите ↓ для установки.");
+    }
+  }
+
+  private void showUpdate() {
+    UpdateClient.Release release = updateRelease();
+    if (release == null) {
+      checkForUpdates(true);
+      return;
+    }
+    int status = downloadStatus();
+    boolean ready = status == DownloadManager.STATUS_SUCCESSFUL;
+    boolean downloading =
+        status == DownloadManager.STATUS_PENDING
+            || status == DownloadManager.STATUS_RUNNING
+            || status == DownloadManager.STATUS_PAUSED;
+    LinearLayout layout =
+        panel(
+            "Обновление Horizon TV",
+            "Установлена "
+                + installedVersion
+                + " · Доступна "
+                + release.version
+                + "\n\n"
+                + (ready
+                    ? "APK загружен. Перед установкой проверяется SHA-256."
+                    : downloading
+                        ? "APK скачивается. Если сеть недоступна, загрузка продолжится после"
+                              + " подключения."
+                        : "APK будет скачан из официального репозитория GitHub. Настройки"
+                              + " сохранятся.")
+                + "\nУстановка выполняется после подтверждения в системном окне Android.");
+    final AlertDialog[] ref = new AlertDialog[1];
+    if (!downloading)
+      item(
+          layout,
+          ready ? "Установить обновление" : "Скачать обновление",
+          String.format(
+              Locale.getDefault(), "Версия %s · %.2f МБ", release.version, release.size / 1048576d),
+          () -> {
+            ref[0].dismiss();
+            if (ready) installDownloadedUpdate();
+            else downloadUpdate();
+          });
+    if (downloading || ready)
+      item(
+          layout,
+          "Отменить загрузку",
+          "Удалить скачанный файл обновления",
+          () -> {
+            ref[0].dismiss();
+            clearUpdateDownload();
+            updateUpdateButton();
+          });
+    item(layout, "Позже", "Вернуться на главный экран", () -> ref[0].dismiss());
+    ref[0] = dialog(layout);
+  }
+
+  private void downloadUpdate() {
+    if (availableUpdate == null || latestUpdateJson == null) return;
+    clearUpdateDownload();
+    try {
+      DownloadManager manager = downloads();
+      if (manager == null) throw new IllegalStateException("Downloads unavailable");
+      DownloadManager.Request request =
+          new DownloadManager.Request(Uri.parse(availableUpdate.url))
+              .setTitle("Horizon TV " + availableUpdate.version)
+              .setDescription("Обновление главного экрана")
+              .setMimeType("application/vnd.android.package-archive")
+              .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
+              .setDestinationInExternalFilesDir(
+                  this,
+                  Environment.DIRECTORY_DOWNLOADS,
+                  "horizon-tv-"
+                      + availableUpdate.version
+                      + "-"
+                      + System.currentTimeMillis()
+                      + ".apk");
+      long id = manager.enqueue(request);
+      prefs
+          .data
+          .edit()
+          .putLong("update_download_id", id)
+          .putString("update_download_release", latestUpdateJson.toString())
+          .putBoolean("update_download_notified", false)
+          .apply();
+      toast("Скачивание обновления началось.");
+    } catch (Exception e) {
+      toast("Загрузка недоступна. APK можно скачать на lynatick.github.io/tv/");
+    }
+    updateUpdateButton();
+  }
+
+  private void clearUpdateDownload() {
+    long id = prefs.data.getLong("update_download_id", -1);
+    if (id != -1) {
+      try {
+        DownloadManager manager = downloads();
+        if (manager != null) manager.remove(id);
+      } catch (Exception ignored) {
+      }
+    }
+    prefs
+        .data
+        .edit()
+        .remove("update_download_id")
+        .remove("update_download_release")
+        .remove("update_download_notified")
+        .apply();
+  }
+
+  private void installDownloadedUpdate() {
+    if (verifyingUpdate) return;
+    UpdateClient.Release release = pendingUpdate();
+    if (release == null || downloadStatus() != DownloadManager.STATUS_SUCCESSFUL) {
+      toast("Сначала скачайте обновление.");
+      return;
+    }
+    if (!getPackageManager().canRequestPackageInstalls()) {
+      try {
+        waitingForInstallPermission = true;
+        startActivity(
+            new Intent(
+                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:" + getPackageName())));
+        toast("Разрешите Horizon TV устанавливать обновления, затем нажмите «Назад».");
+      } catch (Exception e) {
+        waitingForInstallPermission = false;
+        toast("Разрешите установку для Horizon TV в настройках безопасности телевизора.");
+      }
+      return;
+    }
+    long id = prefs.data.getLong("update_download_id", -1);
+    verifyingUpdate = true;
+    updateUpdateButton();
+    worker.execute(
+        () -> {
+          try {
+            DownloadManager manager = downloads();
+            if (manager == null) throw new IllegalStateException("Downloads unavailable");
+            try (InputStream input =
+                new android.os.ParcelFileDescriptor.AutoCloseInputStream(
+                    manager.openDownloadedFile(id))) {
+              UpdateClient.verify(input, release);
+            }
+            Uri uri = manager.getUriForDownloadedFile(id);
+            if (uri == null) throw new IllegalStateException("APK unavailable");
+            handler.post(
+                () -> {
+                  if (isDestroyed()) return;
+                  verifyingUpdate = false;
+                  updateUpdateButton();
+                  if (!resumed || id != prefs.data.getLong("update_download_id", -1)) return;
+                  try {
+                    startActivity(
+                        new Intent(Intent.ACTION_VIEW)
+                            .setDataAndType(uri, "application/vnd.android.package-archive")
+                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION));
+                  } catch (Exception e) {
+                    toast("Установщик недоступен. APK можно скачать на lynatick.github.io/tv/");
+                  }
+                });
+          } catch (Exception e) {
+            handler.post(
+                () -> {
+                  if (isDestroyed()) return;
+                  verifyingUpdate = false;
+                  if (id == prefs.data.getLong("update_download_id", -1)) clearUpdateDownload();
+                  updateUpdateButton();
+                  if (resumed) toast("Не удалось проверить APK. Скачайте обновление ещё раз.");
+                });
+          }
+        });
   }
 
   private void toast(String message) {
@@ -1279,9 +1630,9 @@ public final class MainActivity extends Activity {
                   weatherError =
                       WeatherClient.requiresKey(provider)
                           ? "Не удалось обновить погоду. Проверьте интернет, ключ API и тариф"
-                                + " источника."
+                              + " источника."
                           : "Не удалось обновить погоду. Проверьте интернет или выберите другой"
-                                + " источник.";
+                              + " источник.";
                   updateWeatherCard();
                   if (manual) toast(weatherError);
                 });
@@ -1432,12 +1783,12 @@ public final class MainActivity extends Activity {
     String description =
         provider.equals("google")
             ? "Ключ Google Maps Platform с включённым Weather API. Для рабочего ключа Google"
-                  + " требуется платёжный аккаунт; стоимость и лимиты зависят от тарифа."
+                + " требуется платёжный аккаунт; стоимость и лимиты зависят от тарифа."
             : provider.equals("yandex")
                 ? "Ключ API Яндекс Погоды с доступом к GraphQL v3. Получите его в кабинете"
-                      + " разработчика Яндекса; доступ зависит от тарифа."
+                    + " разработчика Яндекса; доступ зависит от тарифа."
                 : "Получите собственный ключ на weatherapi.com. Доступны бесплатные и платные"
-                      + " тарифы с разными лимитами.";
+                    + " тарифы с разными лимитами.";
     LinearLayout layout =
         panel(
             WeatherClient.label(provider),

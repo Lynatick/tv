@@ -1,27 +1,26 @@
 {
-  "date": "2026-10-19",
+  "version": "1.0.1",
+  "date": "2026-10-20",
   "jdk": "25.0.4.1",
   "gradle": "9.1.0",
   "agp": "9.0.1",
-  "signed_release_installed": true,
   "unit_tests": {
-    "tests": "9",
-    "failures": "0",
-    "errors": "0",
-    "skipped": "0"
+    "tests": 14,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
   },
-  "lint": "0 errors, 5 warnings",
-  "emulator": "Android TV API 34 / ARM64 / 1920x1080",
-  "remote_navigation": "DPAD right, OK, Back and down checked in signed release",
-  "favorite_selection": "Cast moderator removed; Link Cinema, Play Store, Settings and YouTube retained",
-  "city_search": "Moscow → Москва, Россия; real geocoding response",
-  "live_weather": "MET Norway fetched real conditions in signed APK",
-  "open_meteo_forecast": "network timeout; provider parser tested",
-  "google_yandex_weatherapi": "parsers tested with sample JSON; no real API keys supplied; live authenticated access unverified",
-  "home_role": "system prompt assigns role but factory TV launcher retains priority 2 in emulator",
-  "home_button_accessibility": "enabled through system UI, no shell settings writes; HOME from Settings verified ru.horizon.tv/.MainActivity",
-  "mi_tv_stick_4k": "physical device not connected; firmware compatibility unverified",
-  "site_preview": "browser visual QA at 654px width, real screenshot and expandable installation FAQ verified",
-  "signing": "dedicated local key, excluded from source and Git",
-  "api_key_setup_ui": "WeatherAPI.com key editor displayed before request; no real keys entered"
+  "lint": "0 errors, 5 existing warnings",
+  "update_tests": [
+    "numeric stable versions; no downgrade or same-version offer",
+    "reject draft and prerelease",
+    "reject foreign URLs, missing SHA-256, incomplete and oversized assets",
+    "reject modified, truncated and oversized APK contents"
+  ],
+  "signing_certificate_sha256": "de8cb4c0d91e4fb0d798413dfa93c35387471bc825c9880632246a6fdf001523",
+  "apk_sha256": "ca2dd2d9a33e77e9e59f1f892f3bf695bf237765df0479099f87a687566a179b",
+  "source_archive_excludes": "keys, credentials, device records, local caches and build outputs",
+  "physical_tv_installation": "pending: ADB connection unavailable",
+  "ui_validation": "new UI runtime verification pending; temporary emulator creation was not authorized",
+  "prior_version_validation": "validation-1.0.0.json"
 }
