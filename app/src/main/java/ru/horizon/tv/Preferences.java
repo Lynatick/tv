@@ -12,6 +12,14 @@ final class Preferences {
   Preferences(Context context) {
     data = context.getSharedPreferences("horizon", Context.MODE_PRIVATE);
     if (!data.contains("provider")) data.edit().putString("provider", "met").apply();
+    if (get("location_mode", "unset").equals("unset")) {
+      data.edit()
+          .putString("location_mode", "manual")
+          .putString("city", "Анапа")
+          .putString("latitude", "44.89497")
+          .putString("longitude", "37.31623")
+          .apply();
+    }
   }
 
   String get(String key, String fallback) {

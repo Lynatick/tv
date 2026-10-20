@@ -1,5 +1,5 @@
 {
-  "version": "1.0.3",
+  "version": "1.0.4",
   "date": "2026-10-20",
   "jdk": "25.0.4.1",
   "gradle": "9.1.0",
@@ -11,21 +11,154 @@
     "skipped": 0
   },
   "lint": "0 errors, 7 warnings",
-  "weather_source": "Original Yandex Weather HTTPS page, no API key",
+  "weather_source": "Official Meteoblue public HTTPS widgets, transparent bright text, provider markup and attribution unchanged",
   "weather_live_navigation": {
-    "today": "200 OK: Moscow coordinates select Tverskoy district today forecast",
-    "week": "200 OK: Saint Petersburg coordinates select Dvortsoviy district seven-day forecast"
+    "day": "Native Android TV WebView: three-hour widget loaded for Anapa",
+    "week": "Native Android TV WebView: seven-day widget loaded for Anapa; both temperature rows visible at 720p and 1080p",
+    "coordinates": "Chrome: six-decimal Moscow, Saint Petersburg and negative lat/lon routes returned HTTP 200",
+    "background": "Chrome: html/body rgba(0,0,0,0), bright text; Android WebView/container transparent"
   },
   "new_weather_tests": [
-    "day/week route and exact coordinates",
-    "locale-independent coordinate format",
-    "invalid locations and periods rejected",
-    "weather and captcha navigation allowed",
+    "day/week official widget URLs with exact signed coordinates and supported transparency parameters",
+    "locale-independent coordinates",
+    "invalid coordinates and periods rejected",
+    "official weather links allowed",
     "foreign hosts, native schemes, user-info URLs, nonstandard ports and path escapes blocked"
   ],
   "signing_certificate_sha256": "de8cb4c0d91e4fb0d798413dfa93c35387471bc825c9880632246a6fdf001523",
-  "apk_sha256": "0ce9cc2925424af2aeb37f7363e81680fd1f14b1fbfa525b1b1723216bd873e3",
+  "apk_sha256": "2418c230700f09e764b057d7882fbd6894a060c52fc831c2c1a267d6609f4c34",
   "device_installation": "not performed, per user instruction",
-  "android_tv_ui": "not runtime verified; requires Android System WebView and device-specific testing",
-  "previous_validation": "validation-1.0.0.json"
+  "android_tv_ui": {
+    "emulator": "Android TV 14 / API 34, signed release APK",
+    "physical_device": "not tested; no physical TV installation requested",
+    "resolutions": [
+      {
+        "size": [
+          1920,
+          1080
+        ],
+        "density": 320,
+        "application_bounds": {
+          "Cast moderator": [
+            94,
+            838,
+            510,
+            1026
+          ],
+          "Play Store": [
+            530,
+            838,
+            946,
+            1026
+          ],
+          "Settings": [
+            966,
+            838,
+            1382,
+            1026
+          ],
+          "YouTube": [
+            1402,
+            838,
+            1818,
+            1026
+          ]
+        },
+        "day_week_bounds_unchanged": true,
+        "collapse_restores_app_focus": true,
+        "refresh_button_visible": true,
+        "status": [
+          "Обновлено 20.10 14:37 · Стрелки — прокрутка · Назад — к кнопкам"
+        ]
+      },
+      {
+        "size": [
+          1280,
+          720
+        ],
+        "density": 213,
+        "application_bounds": {
+          "Cast moderator": [
+            63,
+            558,
+            341,
+            683
+          ],
+          "Play Store": [
+            354,
+            558,
+            631,
+            683
+          ],
+          "Settings": [
+            644,
+            558,
+            922,
+            683
+          ],
+          "YouTube": [
+            935,
+            558,
+            1212,
+            683
+          ]
+        },
+        "day_week_bounds_unchanged": true,
+        "collapse_restores_app_focus": true,
+        "refresh_button_visible": true,
+        "status": [
+          "Обновлено 20.10 14:38 · Стрелки — прокрутка · Назад — к кнопкам"
+        ]
+      },
+      {
+        "size": [
+          3840,
+          2160
+        ],
+        "density": 320,
+        "application_bounds": {
+          "Cast moderator": [
+            94,
+            838,
+            510,
+            1026
+          ],
+          "Play Store": [
+            530,
+            838,
+            946,
+            1026
+          ],
+          "Settings": [
+            966,
+            838,
+            1382,
+            1026
+          ],
+          "YouTube": [
+            1402,
+            838,
+            1818,
+            1026
+          ]
+        },
+        "day_week_bounds_unchanged": true,
+        "collapse_restores_app_focus": true,
+        "refresh_button_visible": true,
+        "status": [
+          "Обновлено 20.10 14:43 · Стрелки — прокрутка · Назад — к кнопкам"
+        ],
+        "rendered_ui": "1920x1080 logical UI on 3840x2160 physical emulator display; Android TV system rendering mode"
+      }
+    ],
+    "temperature_rows": "Both maximum and minimum rows visually inspected at 720p, 1080p and 4K display profile (system UI rendered at 1080p); no clipping or overlap",
+    "default_city": "Anapa on first run; previously selected Moscow preserved during upgrade",
+    "refresh_error": {
+      "last_success_before": "Обновлено 20.10 14:38 · Стрелки — прокрутка · Назад — к кнопкам",
+      "failed_refresh_status": "Обновлено 20.10 14:38 · Не удалось обновить. Проверьте сеть и нажмите «↻ Обновить».",
+      "timestamp_preserved_on_network_failure": true,
+      "manual_refresh_button_checked": true
+    }
+  },
+  "previous_validation": "validation-1.0.3.json"
 }

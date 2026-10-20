@@ -1,6 +1,7 @@
 package ru.horizon.tv;
 
 import android.app.Activity;
+import android.graphics.Color;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.StateListDrawable;
 import android.view.Gravity;
@@ -20,24 +21,30 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 
 /** A single reusable WebView with native, remote-friendly forecast controls. */
-final class YandexWeatherView extends LinearLayout {
+final class MeteoblueWeatherView extends LinearLayout {
   private final Preferences prefs;
   private final TextView title, status, day, week, expand, placeholder;
   private WebView web;
+  private FrameLayout page;
+  private boolean fullscreen;
   private WeatherClient.City city;
   private boolean active, dirty = true, loading;
   private long lastAttempt, lastSuccess;
+  private String loadingUrl;
 
-  YandexWeatherView(
+  MeteoblueWeatherView(
       Activity activity, Preferences prefs, Runnable chooseCity, Runnable toggleSize) {
     super(activity);
     this.prefs = prefs;
     setOrientation(VERTICAL);
     setPadding(dp(12), dp(10), dp(12), dp(8));
-    setBackground(shape(0xE61B3038, 0));
-    title = label("Яндекс Погода", 14, 0xFFB5E4CD);
+    setBackgroundColor(Color.TRANSPARENT);
+    title = label("Meteoblue", 14, 0xFFB5E4CD);
     title.setSingleLine(true);
     title.setEllipsize(android.text.TextUtils.TruncateAt.END);
     addView(title, new LayoutParams(-1, dp(24)));
@@ -47,25 +54,46 @@ final class YandexWeatherView extends LinearLayout {
     week = control("Неделя", () -> selectPeriod("week"));
     expand = control("Развернуть", toggleSize);
     TextView[] buttons = {
-      day, week, control("Город", chooseCity), expand, control("↻", () -> refresh(true))
+      day, week, control("Город", chooseCity), expand, control("↻ Обновить", () -> refresh(true))
     };
     for (TextView button : buttons) {
-      LayoutParams params = new LayoutParams(0, dp(32), button == buttons[4] ? .45f : 1);
+      LayoutParams params = new LayoutParams(0, dp(32), button == buttons[4] ? 1.25f : 1);
       params.setMargins(dp(2), 0, dp(2), 0);
       controls.addView(button, params);
     }
-    buttons[4].setContentDescription("Обновить прогноз Яндекс Погоды");
+    buttons[4].setContentDescription("Обновить прогноз Meteoblue");
     addView(controls, new LayoutParams(-1, dp(36)));
-    FrameLayout page = new FrameLayout(activity);
+    page =
+        new FrameLayout(activity) {
+          @Override
+          protected void onMeasure(int widthSpec, int heightSpec) {
+            super.onMeasure(widthSpec, heightSpec);
+            if (web != null) {
+              // Scale the native viewport, leaving the provider's HTML and attribution intact.
+              float scale = fullscreen ? 1f : .7f;
+              web.setPivotX(0);
+              web.setPivotY(0);
+              web.setScaleX(scale);
+              web.setScaleY(scale);
+              web.measure(
+                  MeasureSpec.makeMeasureSpec(
+                      Math.round(getMeasuredWidth() / scale), MeasureSpec.EXACTLY),
+                  MeasureSpec.makeMeasureSpec(
+                      Math.round(getMeasuredHeight() / scale), MeasureSpec.EXACTLY));
+            }
+          }
+        };
     addView(page, new LayoutParams(-1, 0, 1));
     placeholder = label("Выберите город кнопкой «Город»", 15, 0xFFF0F5F1);
     placeholder.setGravity(Gravity.CENTER);
     placeholder.setPadding(dp(12), dp(12), dp(12), dp(12));
     try {
       web = new WebView(activity);
+      web.setBackgroundColor(Color.TRANSPARENT);
       WebSettings settings = web.getSettings();
       settings.setJavaScriptEnabled(true);
       settings.setDomStorageEnabled(true);
+      settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
       settings.setAllowFileAccess(false);
       settings.setAllowContentAccess(false);
       settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
@@ -78,7 +106,7 @@ final class YandexWeatherView extends LinearLayout {
       settings.setBlockNetworkLoads(true);
       CookieManager.getInstance().setAcceptThirdPartyCookies(web, false);
       web.setContentDescription(
-          "Прогноз Яндекс Погоды. Стрелки — навигация; Назад — выйти из страницы.");
+          "Прогноз Meteoblue. Стрелки — навигация; Назад — выйти из страницы.");
       web.setWebChromeClient(
           new WebChromeClient() {
             @Override
@@ -96,10 +124,10 @@ final class YandexWeatherView extends LinearLayout {
           new WebViewClient() {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-              if (YandexWeather.allowedNavigation(request.getUrl().toString())) return false;
+              if (MeteoblueWeather.allowedNavigation(request.getUrl().toString())) return false;
               Toast.makeText(
                       activity,
-                      "В блоке открываются только страницы Яндекс Погоды.",
+                      "В блоке открываются только страницы Meteoblue.",
                       Toast.LENGTH_SHORT)
                   .show();
               return true;
@@ -107,11 +135,13 @@ final class YandexWeatherView extends LinearLayout {
 
             @Override
             public void onPageFinished(WebView view, String url) {
-              if (!active || !loading || !url.equals(view.getUrl())) return;
+              if (!active || !loading || !url.equals(loadingUrl) || !url.equals(view.getUrl()))
+                return;
               loading = false;
               lastSuccess = System.currentTimeMillis();
               placeholder.setVisibility(GONE);
-              status.setText("Яндекс Погода · Стрелки — прокрутка · Назад — выйти из страницы");
+              web.setVisibility(VISIBLE);
+              showStatus("Стрелки — прокрутка · Назад — к кнопкам");
             }
 
             @Override
@@ -143,7 +173,7 @@ final class YandexWeatherView extends LinearLayout {
               + " настройках ТВ.");
     }
     page.addView(placeholder, new FrameLayout.LayoutParams(-1, -1));
-    placeholder.setBackgroundColor(0xFF1B3038);
+    placeholder.setBackgroundColor(Color.TRANSPARENT);
     status = label("Город можно изменить в любой момент", 10, 0xFF9DB2B4);
     status.setMaxLines(2);
     addView(status, new LayoutParams(-1, dp(28)));
@@ -175,6 +205,7 @@ final class YandexWeatherView extends LinearLayout {
     TextView button = label(value, 12, 0xFFF0F5F1);
     button.setGravity(Gravity.CENTER);
     button.setFocusable(true);
+    button.setFocusableInTouchMode(true);
     button.setClickable(true);
     StateListDrawable background = new StateListDrawable();
     background.addState(new int[] {android.R.attr.state_focused}, shape(0xFF34564E, 0xFFB5E4CD));
@@ -187,7 +218,9 @@ final class YandexWeatherView extends LinearLayout {
   }
 
   private String period() {
-    return prefs.get("yandex_period", "day").equals("week") ? "week" : "day";
+    return prefs.get("weather_period", prefs.get("yandex_period", "week")).equals("week")
+        ? "week"
+        : "day";
   }
 
   private void updatePeriod() {
@@ -197,7 +230,7 @@ final class YandexWeatherView extends LinearLayout {
 
   private void selectPeriod(String value) {
     if (period().equals(value)) return;
-    prefs.set("yandex_period", value);
+    prefs.set("weather_period", value);
     updatePeriod();
     dirty = true;
     load();
@@ -208,6 +241,8 @@ final class YandexWeatherView extends LinearLayout {
   }
 
   void setFullscreen(boolean value) {
+    fullscreen = value;
+    page.requestLayout();
     expand.setText(value ? "Свернуть" : "Развернуть");
   }
 
@@ -217,7 +252,7 @@ final class YandexWeatherView extends LinearLayout {
             ? value != null
             : value == null || city.latitude != value.latitude || city.longitude != value.longitude;
     city = value;
-    title.setText(value == null ? "Яндекс Погода" : "Яндекс Погода · " + value.name);
+    title.setText(value == null ? "Meteoblue" : "Meteoblue · " + value.name);
     if (changed) {
       if (web != null) web.stopLoading();
       loading = false;
@@ -228,6 +263,7 @@ final class YandexWeatherView extends LinearLayout {
     }
     placeholder.setVisibility(web == null || value == null ? VISIBLE : GONE);
     if (value == null) status.setText("Выберите город или автоматическое определение");
+    else if (changed) showStatus("Выбран город: " + value.name);
     if (dirty) load();
   }
 
@@ -256,10 +292,12 @@ final class YandexWeatherView extends LinearLayout {
     loading = true;
     dirty = false;
     lastAttempt = System.currentTimeMillis();
-    status.setText("Загрузка прогноза Яндекс Погоды…");
+    showStatus("Загрузка прогноза Meteoblue…");
     placeholder.setText("Загрузка прогноза…");
     placeholder.setVisibility(VISIBLE);
-    web.loadUrl(YandexWeather.url(city.latitude, city.longitude, period()));
+    web.setVisibility(INVISIBLE);
+    loadingUrl = MeteoblueWeather.url(city.latitude, city.longitude, period());
+    web.loadUrl(loadingUrl);
   }
 
   void refresh(boolean manual) {
@@ -292,9 +330,18 @@ final class YandexWeatherView extends LinearLayout {
     if (!active) return;
     loading = false;
     placeholder.setVisibility(GONE);
-    status.setText(
-        "Прогноз не загружен. Проверьте сеть и нажмите ↻. На странице может потребоваться проверка"
-            + " Яндекса.");
+    web.setVisibility(VISIBLE);
+    showStatus("Не удалось обновить. Проверьте сеть и нажмите «↻ Обновить».");
+  }
+
+  private void showStatus(String message) {
+    String updated =
+        lastSuccess == 0
+            ? "Ещё не обновлялось"
+            : "Обновлено "
+                + new SimpleDateFormat("dd.MM HH:mm", Locale.getDefault())
+                    .format(new Date(lastSuccess));
+    status.setText(updated + " · " + message);
   }
 
   boolean releaseWebFocus() {

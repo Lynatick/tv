@@ -62,7 +62,7 @@ public final class MainActivity extends Activity {
   private FrameLayout root;
   private LinearLayout content;
   private TextView clock, date, network;
-  private YandexWeatherView weatherView;
+  private MeteoblueWeatherView weatherView;
   private WeatherClient.City weatherCity;
   private final List<AppEntry> apps = new ArrayList<>();
   private String screen = "home", weatherError = "";
@@ -382,7 +382,7 @@ public final class MainActivity extends Activity {
     gap(header, 18);
     add(header, button("⚙  Настройки", this::showSettings), 138, 40);
     add(content, header, -1, 44);
-    gap(content, 24);
+    gap(content, screen.equals("home") && prefs.flag("weather_enabled", true) ? 8 : 24);
     if (screen.equals("apps")) renderApps();
     else if (screen.equals("weather")) renderWeatherPage();
     else renderHome();
@@ -420,13 +420,13 @@ public final class MainActivity extends Activity {
     int height =
         showWeather
             ? Math.max(
-                220,
+                248,
                 Math.min(
-                    260,
+                    288,
                     (int)
                             (getResources().getDisplayMetrics().heightPixels
                                 / getResources().getDisplayMetrics().density)
-                        - 280))
+                        - 252))
             : 168;
     timeBlock.setGravity(Gravity.CENTER_VERTICAL);
     hero.addView(timeBlock, new LinearLayout.LayoutParams(0, dp(height), showWeather ? .32f : 1));
@@ -438,7 +438,7 @@ public final class MainActivity extends Activity {
       weatherView.setActive(resumed);
     }
     add(content, hero, -1, height);
-    gap(content, 18);
+    gap(content, showWeather ? 6 : 18);
     LinearLayout label = row();
     add(label, text("Избранные приложения", 19, WHITE), -2, -2);
     View fill = new View(this);
@@ -511,6 +511,7 @@ public final class MainActivity extends Activity {
       add(tile, text("＋", 27, ACCENT), -2, 36);
       add(tile, text("Выбрать", 12, WHITE), -2, 24);
       interactive(tile, this::showAppPicker);
+      tile.setFocusableInTouchMode(true);
       emptyAppFocus = tile;
       tile.setContentDescription("Выбрать приложения для главного экрана");
       grid.addView(tile, tileParams(columns));
@@ -544,6 +545,7 @@ public final class MainActivity extends Activity {
     }
     tile.setContentDescription(app.name);
     interactive(tile, () -> launch(app));
+    tile.setFocusableInTouchMode(true);
     tile.setOnFocusChangeListener(
         (v, focused) -> {
           v.setElevation(focused ? dp(8) : 0);
@@ -669,7 +671,7 @@ public final class MainActivity extends Activity {
     item(
         layout,
         "Погода",
-        "Яндекс Погода: город, день, неделя и частота обновления",
+        "Meteoblue: город, день, неделя и частота обновления",
         () -> {
           ref[0].dismiss();
           showWeather();
@@ -1166,17 +1168,18 @@ public final class MainActivity extends Activity {
         text(
             "Пульт: стрелки — навигация, OK — выбор, удерживать OK — действия с приложением, MENU —"
                 + " настройки, Назад — главный экран.\n\n"
-                + "Погода: встроенная страница Яндекс Погоды. Кнопки «День», «Неделя» и «Город»"
-                + " управляются с пульта. API-ключ не нужен. Яндекс сохраняет оформление, ссылки и"
-                + " атрибуцию своей страницы; она может содержать рекламу, cookies и проверку"
-                + " подключения.\n\n"
+                + "Погода: официальный информер Meteoblue рядом с часами на общем фоне. Кнопки"
+                + " «День», «Неделя» и «Город» управляются с пульта. Кнопка «↻ Обновить» загружает"
+                + " прогноз заново. Показано время последней успешной загрузки, а не выпуска"
+                + " прогноза. Meteoblue сохраняет ссылки и атрибуцию своей страницы; она может"
+                + " содержать рекламу, cookies и проверку подключения.\n\n"
                 + "Поиск городов: Open-Meteo / GeoNames. Автоматический город: ipwho.is по внешнему"
                 + " IP. VPN может изменить результат. Название города передаётся сервису поиска,"
-                + " координаты выбранного города — Яндексу. Настройки и избранное хранятся на"
+                + " координаты выбранного города — Meteoblue. Настройки и избранное хранятся на"
                 + " ТВ.\n\n"
                 + "Загрузка веб-прогноза приостанавливается, когда блок не виден. Частота"
-                + " обновления управляет повторной загрузкой страницы; сам Яндекс также управляет"
-                + " актуальностью своих данных. В Horizon TV нет собственной рекламы и"
+                + " обновления управляет повторной загрузкой страницы; сам Meteoblue также"
+                + " управляет актуальностью своих данных. В Horizon TV нет собственной рекламы и"
                 + " аналитики.\n\n"
                 + "Скачать и обновить: lynatick.github.io/tv/\n"
                 + "Исходники: github.com/Lynatick/tv",
@@ -1475,7 +1478,7 @@ public final class MainActivity extends Activity {
   private void ensureWeatherView() {
     if (weatherView == null)
       weatherView =
-          new YandexWeatherView(
+          new MeteoblueWeatherView(
               this,
               prefs,
               this::showLocation,
@@ -1594,7 +1597,7 @@ public final class MainActivity extends Activity {
   }
 
   private void showWeather() {
-    LinearLayout layout = panel("Яндекс Погода", "Встроенная страница прогноза без API-ключа");
+    LinearLayout layout = panel("Meteoblue", "Встроенная страница прогноза без API-ключа");
     final AlertDialog[] ref = new AlertDialog[1];
     String mode = prefs.get("location_mode", "unset");
     String city =
@@ -1612,7 +1615,7 @@ public final class MainActivity extends Activity {
     item(
         layout,
         "Прогноз на день",
-        "Сегодня: утро, день, вечер и ночь",
+        "Прогноз по 3 часа: подробности выбранного дня",
         () -> {
           ref[0].dismiss();
           openWeatherPeriod("day");
@@ -1620,7 +1623,7 @@ public final class MainActivity extends Activity {
     item(
         layout,
         "Прогноз на неделю",
-        "Ближайшие 7 дней на странице Яндекс Погоды",
+        "Ближайшие 7 дней на странице Meteoblue",
         () -> {
           ref[0].dismiss();
           openWeatherPeriod("week");
@@ -1660,7 +1663,7 @@ public final class MainActivity extends Activity {
     item(
         layout,
         "Обновить сейчас",
-        "Перезагрузить страницу Яндекс Погоды",
+        "Перезагрузить страницу Meteoblue",
         () -> {
           ref[0].dismiss();
           if (prefs.get("location_mode", "unset").equals("unset")) showLocation();
@@ -1676,7 +1679,7 @@ public final class MainActivity extends Activity {
   }
 
   private void openWeatherPeriod(String period) {
-    prefs.set("yandex_period", period);
+    prefs.set("weather_period", period);
     if (weatherView != null) {
       weatherView.destroy();
       weatherView = null;

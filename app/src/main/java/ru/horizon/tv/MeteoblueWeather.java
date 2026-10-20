@@ -3,21 +3,26 @@ package ru.horizon.tv;
 import java.net.URI;
 import java.util.Locale;
 
-/** Navigation only: forecasts stay on the original Yandex page, with its branding intact. */
-final class YandexWeather {
+/** Official widgets: provider content, branding and links remain intact. */
+final class MeteoblueWeather {
   static String url(double latitude, double longitude, String period) {
     if (!Double.isFinite(latitude)
         || !Double.isFinite(longitude)
         || Math.abs(latitude) > 90
         || Math.abs(longitude) > 180) throw new IllegalArgumentException("Invalid location");
-    if (!period.equals("day") && !period.equals("week"))
+    if (!"day".equals(period) && !"week".equals(period))
       throw new IllegalArgumentException("Invalid forecast period");
     return String.format(
         Locale.ROOT,
-        "https://yandex.ru/pogoda/ru/details/%s?lat=%.6f&lon=%.6f",
-        period.equals("week") ? "7-day-weather" : "today",
+        "https://www.meteoblue.com/ru/weather/widget/%s/%.6fN%.6fE"
+            + "?geoloc=fixed&tempunit=CELSIUS&windunit=METER_PER_SECOND&precipunit=MILLIMETER"
+            + "&days=%d&coloured=monochrome&pictoicon=1&maxtemperature=1&mintemperature=1"
+            + "&windspeed=0&windgust=0&winddirection=0&uv=0&humidity=0&precipitation=0"
+            + "&precipitationprobability=0&spot=0&pressure=0&layout=dark",
+        period.equals("week") ? "daily" : "three",
         latitude,
-        longitude);
+        longitude,
+        period.equals("week") ? 7 : 4);
   }
 
   static boolean allowedNavigation(String value) {
@@ -31,14 +36,10 @@ final class YandexWeather {
       return "https".equalsIgnoreCase(uri.getScheme())
           && uri.getUserInfo() == null
           && (uri.getPort() == -1 || uri.getPort() == 443)
-          && ("yandex.ru".equalsIgnoreCase(host) || "www.yandex.ru".equalsIgnoreCase(host))
+          && ("meteoblue.com".equalsIgnoreCase(host) || "www.meteoblue.com".equalsIgnoreCase(host))
           && path != null
           && !path.contains("\\")
-          && (path.equals("/pogoda")
-              || path.startsWith("/pogoda/")
-              || path.equals("/showcaptcha")
-              || path.startsWith("/showcaptcha/")
-              || path.equals("/checkcaptcha"));
+          && path.matches("/[a-z]{2}/weather/.*");
     } catch (Exception ignored) {
       return false;
     }
