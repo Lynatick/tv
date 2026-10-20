@@ -97,6 +97,27 @@ public class UpdateClientTest {
   }
 
   @Test
+  public void websiteManifestUsesTheSameAssetValidation() throws Exception {
+    JSONObject manifest =
+        new JSONObject()
+            .put("version", "1.0.2")
+            .put("size_bytes", 3)
+            .put("sha256", SHA)
+            .put(
+                "download",
+                "https://github.com/Lynatick/tv/releases/download/v1.0.2/horizon-tv-1.0.2.apk");
+    UpdateClient.Release update = UpdateClient.parse(UpdateClient.siteRelease(manifest), "1.0.1");
+    assertEquals("1.0.2", update.version);
+    assertEquals(3, update.size);
+    assertNull(UpdateClient.parse(UpdateClient.siteRelease(manifest), "1.0.2"));
+    manifest.put("download", "https://example.com/fake.apk");
+    assertThrows(
+        IOException.class, () -> UpdateClient.parse(UpdateClient.siteRelease(manifest), "1.0.1"));
+    manifest.put("version", "../latest");
+    assertThrows(IllegalArgumentException.class, () -> UpdateClient.siteRelease(manifest));
+  }
+
+  @Test
   public void checksumRejectsTamperingAndTruncation() throws Exception {
     UpdateClient.Release update = UpdateClient.parse(release("1.0.2"), "1.0.1");
     UpdateClient.verify(new ByteArrayInputStream("abc".getBytes(StandardCharsets.UTF_8)), update);

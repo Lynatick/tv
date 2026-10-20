@@ -13,7 +13,7 @@ import org.json.JSONObject;
 
 /** Stable releases and APKs from this application's repository only. */
 final class UpdateClient {
-  static final String LATEST = "https://api.github.com/repos/Lynatick/tv/releases/latest";
+  static final String LATEST = "https://lynatick.github.io/tv/release.json";
   static final long MAX_APK_BYTES = 50 * 1024 * 1024;
 
   static final class Release {
@@ -63,14 +63,30 @@ final class UpdateClient {
     throw new IOException("Release APK unavailable");
   }
 
+  static JSONObject siteRelease(JSONObject manifest) throws Exception {
+    String version = manifest.getString("version");
+    compareVersions(version, version);
+    JSONObject asset =
+        new JSONObject()
+            .put("name", "horizon-tv-" + version + ".apk")
+            .put("state", "uploaded")
+            .put("size", manifest.getLong("size_bytes"))
+            .put("digest", "sha256:" + manifest.getString("sha256"))
+            .put("browser_download_url", manifest.getString("download"));
+    return new JSONObject()
+        .put("tag_name", "v" + version)
+        .put("draft", false)
+        .put("prerelease", false)
+        .put("assets", new JSONArray().put(asset));
+  }
+
   static JSONObject fetch() throws Exception {
     HttpURLConnection connection = (HttpURLConnection) new URL(LATEST).openConnection();
     connection.setConnectTimeout(12000);
     connection.setReadTimeout(15000);
     connection.setUseCaches(false);
-    connection.setRequestProperty("Accept", "application/vnd.github+json");
+    connection.setRequestProperty("Accept", "application/json");
     connection.setRequestProperty("User-Agent", "HorizonTV (https://github.com/Lynatick/tv)");
-    connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28");
     try {
       if (connection.getResponseCode() != 200) throw new IOException("Release check unavailable");
       try (InputStream input = connection.getInputStream();
@@ -81,7 +97,8 @@ final class UpdateClient {
           output.write(buffer, 0, count);
           if (output.size() > 512 * 1024) throw new IOException("Release response too large");
         }
-        return new JSONObject(new String(output.toByteArray(), StandardCharsets.UTF_8));
+        return siteRelease(
+            new JSONObject(new String(output.toByteArray(), StandardCharsets.UTF_8)));
       }
     } finally {
       connection.disconnect();

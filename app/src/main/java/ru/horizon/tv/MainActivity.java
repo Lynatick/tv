@@ -1248,7 +1248,7 @@ public final class MainActivity extends Activity {
                   if (isDestroyed()) return;
                   checkingUpdates = false;
                   if (manual && resumed)
-                    toast("Не удалось проверить обновления. Проверьте доступ к GitHub.");
+                    toast("Не удалось проверить обновления. Проверьте доступ к сайту скачивания.");
                 });
           }
         });
@@ -1309,9 +1309,9 @@ public final class MainActivity extends Activity {
                     ? "APK загружен. Перед установкой проверяется SHA-256."
                     : downloading
                         ? "APK скачивается. Если сеть недоступна, загрузка продолжится после"
-                              + " подключения."
+                            + " подключения."
                         : "APK будет скачан из официального репозитория GitHub. Настройки"
-                              + " сохранятся.")
+                            + " сохранятся.")
                 + "\nУстановка выполняется после подтверждения в системном окне Android.");
     final AlertDialog[] ref = new AlertDialog[1];
     if (!downloading)
