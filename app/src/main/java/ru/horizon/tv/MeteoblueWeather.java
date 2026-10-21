@@ -3,7 +3,7 @@ package ru.horizon.tv;
 import java.net.URI;
 import java.util.Locale;
 
-/** Official widgets: provider content, branding and links remain intact. */
+/** Official widgets; the view applies a compact presentation without changing forecast values. */
 final class MeteoblueWeather {
   static String url(double latitude, double longitude, String period) {
     if (!Double.isFinite(latitude)

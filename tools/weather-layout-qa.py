@@ -11,7 +11,7 @@ requested_sizes = sys.argv[1:]
 sys.argv = ['tv-check.py', 'module']
 driver = runpy.run_path(str(Path(__file__).with_name('tv-check.py')))
 run, ui, click = (driver[name] for name in ('run', 'ui', 'click'))
-records = Path(__file__).resolve().parent.parent / 'signing' / 'meteoblue-qa'
+records = Path(__file__).resolve().parent.parent / 'signing' / 'meteoblue-1.0.5-qa'
 records.mkdir(exist_ok=True)
 
 def snapshot():
@@ -52,6 +52,13 @@ try:
             tree, current = snapshot()
             assert current == initial, (period, initial, current)
             periods[period] = current
+            deadline = time.time() + 40
+            while not any(n.get('text', '').startswith('Обновлено ') and 'Стрелки' in n.get('text', '') for n in tree.iter('node')):
+                assert time.time() < deadline, 'Forecast presentation did not load'
+                time.sleep(1)
+                tree, current = snapshot()
+            name = 'day' if period == 'День' else 'week'
+            (records / f'home-{width}-{name}.png').write_bytes(run('exec-out', 'screencap', '-p'))
         activate('Развернуть')
         time.sleep(1)
         assert any(n.get('text') == 'Свернуть' for n in ui().iter('node'))

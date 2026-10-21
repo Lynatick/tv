@@ -21,6 +21,9 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
@@ -36,11 +39,22 @@ final class MeteoblueWeatherView extends LinearLayout {
   private boolean active, dirty = true, loading;
   private long lastAttempt, lastSuccess;
   private String loadingUrl;
+  private final String presentation;
+  private int loadGeneration;
 
   MeteoblueWeatherView(
       Activity activity, Preferences prefs, Runnable chooseCity, Runnable toggleSize) {
     super(activity);
     this.prefs = prefs;
+    try (InputStream stream = activity.getAssets().open("meteoblue-presentation.js");
+        ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+      byte[] buffer = new byte[4096];
+      int count;
+      while ((count = stream.read(buffer)) != -1) output.write(buffer, 0, count);
+      presentation = new String(output.toByteArray(), StandardCharsets.UTF_8);
+    } catch (java.io.IOException error) {
+      throw new IllegalStateException("Weather presentation asset unavailable", error);
+    }
     setOrientation(VERTICAL);
     setPadding(dp(12), dp(10), dp(12), dp(8));
     setBackgroundColor(Color.TRANSPARENT);
@@ -69,7 +83,7 @@ final class MeteoblueWeatherView extends LinearLayout {
           protected void onMeasure(int widthSpec, int heightSpec) {
             super.onMeasure(widthSpec, heightSpec);
             if (web != null) {
-              // Scale the native viewport, leaving the provider's HTML and attribution intact.
+              // Scale the native viewport without changing forecast values.
               float scale = fullscreen ? 1f : .7f;
               web.setPivotX(0);
               web.setPivotY(0);
@@ -137,11 +151,31 @@ final class MeteoblueWeatherView extends LinearLayout {
             public void onPageFinished(WebView view, String url) {
               if (!active || !loading || !url.equals(loadingUrl) || !url.equals(view.getUrl()))
                 return;
-              loading = false;
-              lastSuccess = System.currentTimeMillis();
-              placeholder.setVisibility(GONE);
-              web.setVisibility(VISIBLE);
-              showStatus("Стрелки — прокрутка · Назад — к кнопкам");
+              int generation = loadGeneration;
+              view.evaluateJavascript(
+                  "(" + presentation + ")('" + period() + "')",
+                  result -> {
+                    if (!active
+                        || !loading
+                        || generation != loadGeneration
+                        || !url.equals(loadingUrl)
+                        || !url.equals(view.getUrl())) return;
+                    if (!"true".equals(result)) {
+                      loading = false;
+                      web.setVisibility(INVISIBLE);
+                      placeholder.setText(
+                          "Не удалось отобразить прогноз. Нажмите «↻ Обновить» или обновите Horizon"
+                              + " TV.");
+                      placeholder.setVisibility(VISIBLE);
+                      showStatus("Формат информера изменился или страница недоступна.");
+                      return;
+                    }
+                    loading = false;
+                    lastSuccess = System.currentTimeMillis();
+                    placeholder.setVisibility(GONE);
+                    web.setVisibility(VISIBLE);
+                    showStatus("Стрелки — прокрутка · Назад — к кнопкам");
+                  });
             }
 
             @Override
@@ -290,6 +324,7 @@ final class MeteoblueWeatherView extends LinearLayout {
   private void load() {
     if (!active || web == null || city == null) return;
     loading = true;
+    loadGeneration++;
     dirty = false;
     lastAttempt = System.currentTimeMillis();
     showStatus("Загрузка прогноза Meteoblue…");
@@ -329,8 +364,9 @@ final class MeteoblueWeatherView extends LinearLayout {
   private void pageError() {
     if (!active) return;
     loading = false;
-    placeholder.setVisibility(GONE);
-    web.setVisibility(VISIBLE);
+    web.setVisibility(INVISIBLE);
+    placeholder.setText("Прогноз недоступен. Проверьте интернет и нажмите «↻ Обновить».");
+    placeholder.setVisibility(VISIBLE);
     showStatus("Не удалось обновить. Проверьте сеть и нажмите «↻ Обновить».");
   }
 

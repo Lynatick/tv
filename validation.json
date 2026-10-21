@@ -1,6 +1,6 @@
 {
-  "version": "1.0.4",
-  "date": "2026-10-20",
+  "version": "1.0.5",
+  "date": "2026-10-21",
   "jdk": "25.0.4.1",
   "gradle": "9.1.0",
   "agp": "9.0.1",
@@ -11,12 +11,10 @@
     "skipped": 0
   },
   "lint": "0 errors, 7 warnings",
-  "weather_source": "Official Meteoblue public HTTPS widgets, transparent bright text, provider markup and attribution unchanged",
+  "weather_source": "Official Meteoblue HTTPS widgets with bundled compact presentation: today-only 3-hour view, hidden coordinates and graphical logo; forecast values unchanged",
   "weather_live_navigation": {
-    "day": "Native Android TV WebView: three-hour widget loaded for Anapa",
-    "week": "Native Android TV WebView: seven-day widget loaded for Anapa; both temperature rows visible at 720p and 1080p",
-    "coordinates": "Chrome: six-decimal Moscow, Saint Petersburg and negative lat/lon routes returned HTTP 200",
-    "background": "Chrome: html/body rgba(0,0,0,0), bright text; Android WebView/container transparent"
+    "day": "Anapa and Saint Petersburg: exactly one visible current-day panel, forecast values unchanged, graphical logo and coordinate form hidden, full-forecast link retained",
+    "week": "Seven visible days, fourteen temperature values preserved, coordinate header hidden"
   },
   "new_weather_tests": [
     "day/week official widget URLs with exact signed coordinates and supported transparency parameters",
@@ -26,11 +24,12 @@
     "foreign hosts, native schemes, user-info URLs, nonstandard ports and path escapes blocked"
   ],
   "signing_certificate_sha256": "de8cb4c0d91e4fb0d798413dfa93c35387471bc825c9880632246a6fdf001523",
-  "apk_sha256": "2418c230700f09e764b057d7882fbd6894a060c52fc831c2c1a267d6609f4c34",
+  "apk_sha256": "e7cfd93e6a771dcd70a5f9f4eedf120014f9dfb87498771c5a209dbe1738526d",
   "device_installation": "not performed, per user instruction",
   "android_tv_ui": {
-    "emulator": "Android TV 14 / API 34, signed release APK",
-    "physical_device": "not tested; no physical TV installation requested",
+    "emulator": "Android TV 14 / API 34, signed 1.0.5 release APK",
+    "physical_device": "not installed or tested, per user instruction",
+    "previous_geometry_checks": "validation-1.0.4.json",
     "resolutions": [
       {
         "size": [
@@ -68,7 +67,7 @@
         "collapse_restores_app_focus": true,
         "refresh_button_visible": true,
         "status": [
-          "Обновлено 20.10 14:37 · Стрелки — прокрутка · Назад — к кнопкам"
+          "Обновлено 21.10 07:20 · Стрелки — прокрутка · Назад — к кнопкам"
         ]
       },
       {
@@ -107,58 +106,86 @@
         "collapse_restores_app_focus": true,
         "refresh_button_visible": true,
         "status": [
-          "Обновлено 20.10 14:38 · Стрелки — прокрутка · Назад — к кнопкам"
+          "Обновлено 21.10 07:21 · Стрелки — прокрутка · Назад — к кнопкам"
+        ]
+      }
+    ],
+    "final_compact_day": [
+      {
+        "size": [
+          1920,
+          1080
+        ],
+        "today_loaded": true,
+        "application_focus": [
+          "",
+          "Cast moderator"
         ]
       },
       {
         "size": [
-          3840,
-          2160
+          1280,
+          720
         ],
-        "density": 320,
-        "application_bounds": {
-          "Cast moderator": [
-            94,
-            838,
-            510,
-            1026
-          ],
-          "Play Store": [
-            530,
-            838,
-            946,
-            1026
-          ],
-          "Settings": [
-            966,
-            838,
-            1382,
-            1026
-          ],
-          "YouTube": [
-            1402,
-            838,
-            1818,
-            1026
-          ]
-        },
-        "day_week_bounds_unchanged": true,
-        "collapse_restores_app_focus": true,
-        "refresh_button_visible": true,
-        "status": [
-          "Обновлено 20.10 14:43 · Стрелки — прокрутка · Назад — к кнопкам"
-        ],
-        "rendered_ui": "1920x1080 logical UI on 3840x2160 physical emulator display; Android TV system rendering mode"
+        "today_loaded": true,
+        "application_focus": [
+          "",
+          "Cast moderator"
+        ]
       }
     ],
-    "temperature_rows": "Both maximum and minimum rows visually inspected at 720p, 1080p and 4K display profile (system UI rendered at 1080p); no clipping or overlap",
-    "default_city": "Anapa on first run; previously selected Moscow preserved during upgrade",
-    "refresh_error": {
-      "last_success_before": "Обновлено 20.10 14:38 · Стрелки — прокрутка · Назад — к кнопкам",
-      "failed_refresh_status": "Обновлено 20.10 14:38 · Не удалось обновить. Проверьте сеть и нажмите «↻ Обновить».",
-      "timestamp_preserved_on_network_failure": true,
-      "manual_refresh_button_checked": true
-    }
+    "visual_check": "720p/1080p: one current-day table; all temperature, wind and precipitation values visible; no coordinate heading/form, no graphical logo; native city/source title retained; application cards remain in place"
   },
-  "previous_validation": "validation-1.0.3.json"
+  "previous_validation": "validation-1.0.4.json",
+  "browser_presentation_checks": [
+    {
+      "city": "anapa",
+      "period": "day",
+      "heightBefore": 578,
+      "heightAfter": 254,
+      "forecastValuesUnchanged": true,
+      "coordinatesHidden": true,
+      "expectedPeriodVisible": true,
+      "missingLayoutRejected": true,
+      "foreignPageRejected": true,
+      "screenshot": "/Users/dmitry_baranov/Documents/ChatGPT/программы/work/HorizonTV/signing/meteoblue-1.0.5-qa/anapa-day.png"
+    },
+    {
+      "city": "anapa",
+      "period": "week",
+      "heightBefore": 257,
+      "heightAfter": 214,
+      "forecastValuesUnchanged": true,
+      "coordinatesHidden": true,
+      "expectedPeriodVisible": true,
+      "missingLayoutRejected": true,
+      "foreignPageRejected": true,
+      "screenshot": "/Users/dmitry_baranov/Documents/ChatGPT/программы/work/HorizonTV/signing/meteoblue-1.0.5-qa/anapa-week.png"
+    },
+    {
+      "city": "petersburg",
+      "period": "day",
+      "heightBefore": 579,
+      "heightAfter": 259,
+      "forecastValuesUnchanged": true,
+      "coordinatesHidden": true,
+      "expectedPeriodVisible": true,
+      "missingLayoutRejected": true,
+      "foreignPageRejected": true,
+      "screenshot": "/Users/dmitry_baranov/Documents/ChatGPT/программы/work/HorizonTV/signing/meteoblue-1.0.5-qa/petersburg-day.png"
+    },
+    {
+      "city": "petersburg",
+      "period": "week",
+      "heightBefore": 257,
+      "heightAfter": 214,
+      "forecastValuesUnchanged": true,
+      "coordinatesHidden": true,
+      "expectedPeriodVisible": true,
+      "missingLayoutRejected": true,
+      "foreignPageRejected": true,
+      "screenshot": "/Users/dmitry_baranov/Documents/ChatGPT/программы/work/HorizonTV/signing/meteoblue-1.0.5-qa/petersburg-week.png"
+    }
+  ],
+  "graphical_logo": "Hidden per user request; source label retained in native heading"
 }
